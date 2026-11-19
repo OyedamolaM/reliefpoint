@@ -81,16 +81,19 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
+      { title: "ReliefPoint Pharmacy | Everyday care, delivered" },
+      { name: "description", content: "Explore everyday wellness, trusted pharmacy essentials and a little more care, from ReliefPoint Pharmacy." },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { property: "og:title", content: "ReliefPoint Pharmacy | Everyday care, delivered" },
+      { property: "og:description", content: "Explore everyday wellness, trusted pharmacy essentials and a little more care, from ReliefPoint Pharmacy." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@Lovable" },
     ],
     links: [
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&family=DM+Serif+Display&display=swap" },
       {
         rel: "stylesheet",
         href: appCss,
