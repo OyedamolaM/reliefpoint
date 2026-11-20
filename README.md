@@ -35,6 +35,14 @@ static assets in `.output/public`. Run the project on a Node.js host or in a
 container. The server accepts `PORT` and `HOST` environment variables. No editor
 platform or proprietary build service is required.
 
+## Vercel
+
+The checked-in `vercel.json` declares TanStack Start and `bun run build`. Nitro
+automatically selects the Vercel output format on Vercel; local builds continue
+to produce the Node.js server described above. Connect the repository's `main`
+branch to the Vercel project and leave its Output Directory override unset so
+Vercel uses the generated `.vercel/output` deployment bundle.
+
 ## Frontend features
 
 - Retail storefront with ReliefPoint forest green and electric lime branding.

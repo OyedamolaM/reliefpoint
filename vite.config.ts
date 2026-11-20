@@ -11,7 +11,8 @@ export default defineConfig({
   },
   plugins: [
     tanstackStart({ server: { entry: "server" } }),
-    nitro({ preset: "node-server" }),
+    // Detect Vercel during hosted builds; keep Node.js output for local builds.
+    nitro(),
     viteReact(),
     tailwindcss(),
   ],
