@@ -7,7 +7,7 @@ const siteOrigin = createIsomorphicFn()
 
 export function pageMeta(title: string, description: string, pathname: string) {
   const origin = siteOrigin();
-  const image = new URL("/reliefpoint-social-v1.png", origin).href;
+  const image = new URL("/reliefpoint-social-v2.png", origin).href;
   return [
     { title },
     { name: "description", content: description },
@@ -24,7 +24,7 @@ export function pageMeta(title: string, description: string, pathname: string) {
     {
       property: "og:image:alt",
       content:
-        "ReliefPoint Pharmacy — everyday health, extraordinary care. Forest green and lime pharmacy cross logo.",
+        "ReliefPoint Pharmacy — everyday health, extraordinary care. Royal blue and electric lime pharmacy cross logo.",
     },
     { name: "twitter:card", content: "summary_large_image" },
     { name: "twitter:title", content: title },

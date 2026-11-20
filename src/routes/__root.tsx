@@ -86,7 +86,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { name: "author", content: "ReliefPoint Pharmacy" },
       { name: "application-name", content: "ReliefPoint Pharmacy" },
-      { name: "theme-color", content: "#0f2e22" },
+      { name: "theme-color", content: "#173FC5" },
       { property: "og:title", content: "ReliefPoint Pharmacy | Everyday care, delivered" },
       {
         property: "og:description",
@@ -107,7 +107,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: appCss,
       },
-      { rel: "icon", href: "/reliefpoint-icon.svg", type: "image/svg+xml" },
+      { rel: "icon", href: "/reliefpoint-icon-blue.svg", type: "image/svg+xml" },
     ],
   }),
   shellComponent: RootShell,

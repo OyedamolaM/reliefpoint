@@ -45,7 +45,7 @@ Vercel uses the generated `.vercel/output` deployment bundle.
 
 ## Frontend features
 
-- Retail storefront with ReliefPoint forest green and electric lime branding.
+- Retail storefront with ReliefPoint royal blue (#173FC5) and electric lime (#B9FF00) branding.
 - Search suggestions, category and price filtering, sorting, mobile filter modal.
 - Wishlist, persistent basket, quantity controls and guest checkout.
 - Nigerian delivery estimates across all 36 states and the FCT.

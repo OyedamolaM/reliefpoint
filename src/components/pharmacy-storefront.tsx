@@ -255,7 +255,7 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
             <span>{filtered.length} matching products</span>
             <button
               type="button"
-              className="!bg-transparent !p-1 !text-forest"
+              className="!bg-transparent !p-1 !text-brand"
               aria-label="Close search suggestions"
               onClick={() => setSuggestionsOpen(false)}
             >
@@ -753,7 +753,7 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
             </div>
           ) : (
             <div className="empty-catalog">
-              <Search className="mx-auto size-10 text-forest/30" />
+              <Search className="mx-auto size-10 text-brand/30" />
               <h3>No products found</h3>
               <p>Try another search or clear your filters.</p>
               <Button onClick={reset} variant="outline">
@@ -773,7 +773,7 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
                 </h2>
                 <p>Have your prescription ready? Our team can guide you through the next step.</p>
                 <Button
-                  className="mt-5 bg-forest text-white hover:bg-forest/90"
+                  className="mt-5 bg-brand text-white hover:bg-brand/90"
                   onClick={() => shop.openPanel("prescription")}
                 >
                   <Upload size={17} />
@@ -819,10 +819,7 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
                     <br />A lot to love.
                   </h2>
                   <p>Discover your next health and wellness favourite.</p>
-                  <Button
-                    className="mt-5 bg-forest text-white hover:bg-forest/90"
-                    onClick={hotDeals}
-                  >
+                  <Button className="mt-5 bg-brand text-white hover:bg-brand/90" onClick={hotDeals}>
                     Explore health deals
                   </Button>
                 </div>
@@ -850,7 +847,7 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
                   a conversation with our pharmacy team.
                 </p>
                 <a
-                  className="inline-flex items-center gap-2 rounded-lg bg-forest px-5 py-3.5 text-sm font-bold text-white"
+                  className="inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-3.5 text-sm font-bold text-white"
                   href={whatsapp(
                     "Hello ReliefPoint, I would like some guidance from your pharmacy team.",
                   )}
@@ -1033,7 +1030,7 @@ function PlusMark() {
       <path d="M12 3h8v9h9v8h-9v9h-8v-9H3v-8h9V3Z" fill="currentColor" />
       <path
         d="m13 17 3 3 6-7"
-        stroke="#0f2e22"
+        stroke="var(--brand-ink)"
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"

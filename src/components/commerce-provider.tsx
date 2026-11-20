@@ -300,7 +300,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
             </ul>
           ) : (
             <div className="py-16 text-center">
-              <Heart className="mx-auto mb-4 size-10 text-forest/40" />
+              <Heart className="mx-auto mb-4 size-10 text-brand/40" />
               <h3 className="text-xl font-semibold">Your favourites belong here</h3>
               <p className="my-3 text-muted-foreground">Tap the heart on a product to save it.</p>
               <Button onClick={() => setWishlistOpen(false)}>Discover products</Button>
@@ -335,7 +335,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
                 <li
                   key={label}
                   aria-current={step === i ? "step" : undefined}
-                  className={`flex-1 border-b-2 pb-3 ${step === i ? "border-forest font-bold" : "text-muted-foreground"}`}
+                  className={`flex-1 border-b-2 pb-3 ${step === i ? "border-brand font-bold" : "text-muted-foreground"}`}
                 >
                   {i + 1}. {label}
                 </li>
@@ -351,7 +351,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
                     : `Add ${formatNaira(30001 - quote.subtotal)} more for free delivery.`}
                   <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
                     <div
-                      className="h-full bg-forest transition-all"
+                      className="h-full bg-brand transition-all"
                       style={{ width: `${Math.min(100, (quote.subtotal / 30001) * 100)}%` }}
                     />
                   </div>
@@ -426,7 +426,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
               </>
             ) : (
               <div className="py-16 text-center">
-                <ShoppingBag className="mx-auto mb-5 size-12 text-forest/30" />
+                <ShoppingBag className="mx-auto mb-5 size-12 text-brand/30" />
                 <h3 className="text-2xl font-semibold">Your cart is waiting for a little care</h3>
                 <p className="my-4 text-muted-foreground">
                   Explore our essentials and find your favourites.
@@ -542,7 +542,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
                 />
               </label>
               {needsPrescription && (
-                <label className="block rounded-xl border border-dashed border-forest/40 p-4 text-sm">
+                <label className="block rounded-xl border border-dashed border-brand/40 p-4 text-sm">
                   <span className="flex items-center gap-2 font-semibold">
                     <Upload className="size-4" />
                     Prescription required
@@ -572,7 +572,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
                     }}
                   />
                   {file && (
-                    <span className="mt-2 block break-all text-forest">Selected: {file.name}</span>
+                    <span className="mt-2 block break-all text-brand">Selected: {file.name}</span>
                   )}
                 </label>
               )}
@@ -634,12 +634,12 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
                 ].map(({ id, title, note, Icon }) => (
                   <label
                     key={id}
-                    className={`flex cursor-pointer items-center gap-3 rounded-xl border p-4 ${payment === id ? "border-forest bg-secondary" : ""}`}
+                    className={`flex cursor-pointer items-center gap-3 rounded-xl border p-4 ${payment === id ? "border-brand bg-secondary" : ""}`}
                   >
                     <input
                       type="radio"
                       name="payment"
-                      className="accent-forest"
+                      className="accent-brand"
                       checked={payment === id}
                       onChange={() => setPayment(id)}
                     />
@@ -658,7 +658,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
               />
               <label className="flex items-start gap-3 text-sm leading-6">
                 <input
-                  className="mt-1 size-4 shrink-0 accent-forest"
+                  className="mt-1 size-4 shrink-0 accent-brand"
                   type="checkbox"
                   checked={consent}
                   onChange={(e) => setConsent(e.target.checked)}
@@ -675,7 +675,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
           )}
           {step === 3 && (
             <div className="space-y-5 py-5">
-              <CheckCircle2 className="size-12 text-forest" />
+              <CheckCircle2 className="size-12 text-brand" />
               <h2 className="text-2xl font-bold">Everything in one place.</h2>
               <p className="text-sm leading-6 text-muted-foreground">
                 Your basket and delivery details are ready. Online payments are not connected yet;
@@ -734,7 +734,7 @@ function OrderTotals({
         <dt>Delivery estimate</dt>
         <dd>{delivery === 0 ? "Free" : formatNaira(delivery ?? 0)}</dd>
       </div>
-      <div className="flex justify-between border-t border-forest/15 pt-3 text-lg font-bold">
+      <div className="flex justify-between border-t border-brand/15 pt-3 text-lg font-bold">
         <dt>Total</dt>
         <dd>{formatNaira(total)}</dd>
       </div>

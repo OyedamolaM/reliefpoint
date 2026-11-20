@@ -37,7 +37,8 @@
   --color-chart-5: var(--chart-5);
   --color-lime: var(--lime);
   --color-leaf: var(--leaf);
-  --color-forest: var(--forest);
+  --color-brand: var(--brand);
+  --color-brand-ink: var(--brand-ink);
   --font-sans: "DM Sans", sans-serif;
   --font-display: "DM Serif Display", serif;
 }
@@ -45,75 +46,43 @@
 :root {
   color-scheme: light;
   --radius: 0.5rem;
-  --background: oklch(0.994 0.004 132);
-  --foreground: oklch(0.205 0.045 157);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.205 0.045 157);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.205 0.045 157);
-  --primary: oklch(0.87 0.235 133);
-  --primary-foreground: oklch(0.205 0.045 157);
-  --secondary: oklch(0.952 0.018 145);
-  --secondary-foreground: oklch(0.31 0.078 154);
-  --muted: oklch(0.972 0.011 142);
-  --muted-foreground: oklch(0.48 0.035 155);
-  --accent: oklch(0.952 0.018 145);
-  --accent-foreground: oklch(0.28 0.06 155);
-  --destructive: oklch(0.56 0.22 28);
-  --destructive-foreground: oklch(0.99 0.005 100);
-  --border: oklch(0.91 0.018 144);
-  --input: oklch(0.91 0.018 144);
-  --ring: oklch(0.63 0.13 151);
-  --chart-1: oklch(0.65 0.16 148);
-  --chart-2: oklch(0.73 0.15 110);
-  --chart-3: oklch(0.56 0.14 190);
-  --chart-4: oklch(0.74 0.13 73);
-  --chart-5: oklch(0.64 0.16 28);
-  --sidebar: oklch(0.972 0.011 142);
-  --sidebar-foreground: oklch(0.205 0.045 157);
-  --sidebar-primary: oklch(0.87 0.235 133);
-  --sidebar-primary-foreground: oklch(0.205 0.045 157);
-  --sidebar-accent: oklch(0.952 0.018 145);
-  --sidebar-accent-foreground: oklch(0.28 0.06 155);
-  --sidebar-border: oklch(0.91 0.018 144);
-  --sidebar-ring: oklch(0.63 0.13 151);
-  --lime: #a3e635;
-  --leaf: oklch(0.94 0.055 140);
-  --forest: #0f2e22;
-}
-
-.dark {
-  color-scheme: dark;
-  --background: oklch(0.16 0.035 155);
-  --foreground: oklch(0.97 0.012 135);
-  --card: oklch(0.2 0.04 155);
-  --card-foreground: oklch(0.97 0.012 135);
-  --popover: oklch(0.2 0.04 155);
-  --popover-foreground: oklch(0.97 0.012 135);
-  --primary: oklch(0.82 0.205 133);
-  --primary-foreground: oklch(0.16 0.035 155);
-  --secondary: oklch(0.28 0.055 155);
-  --secondary-foreground: oklch(0.95 0.015 140);
-  --muted: oklch(0.26 0.04 155);
-  --muted-foreground: oklch(0.72 0.035 145);
-  --accent: oklch(0.28 0.055 155);
-  --accent-foreground: oklch(0.95 0.015 140);
-  --destructive: oklch(0.62 0.2 28);
-  --destructive-foreground: oklch(0.97 0.012 135);
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 16%);
-  --ring: oklch(0.72 0.13 145);
-  --sidebar: oklch(0.2 0.04 155);
-  --sidebar-foreground: oklch(0.97 0.012 135);
-  --sidebar-primary: oklch(0.82 0.205 133);
-  --sidebar-primary-foreground: oklch(0.16 0.035 155);
-  --sidebar-accent: oklch(0.28 0.055 155);
-  --sidebar-accent-foreground: oklch(0.95 0.015 140);
-  --sidebar-border: oklch(1 0 0 / 12%);
-  --sidebar-ring: oklch(0.72 0.13 145);
-  --lime: oklch(0.82 0.205 133);
-  --leaf: oklch(0.31 0.06 155);
-  --forest: oklch(0.19 0.04 155);
+  --brand: #173fc5;
+  --brand-ink: #102768;
+  --lime: #b9ff00;
+  --section-bg: #f3f6fa;
+  --background: #ffffff;
+  --foreground: var(--brand-ink);
+  --card: #ffffff;
+  --card-foreground: var(--brand-ink);
+  --popover: #ffffff;
+  --popover-foreground: var(--brand-ink);
+  --primary: var(--lime);
+  --primary-foreground: var(--brand-ink);
+  --secondary: var(--section-bg);
+  --secondary-foreground: var(--brand-ink);
+  --muted: var(--section-bg);
+  --muted-foreground: #52627b;
+  --accent: #eaf0ff;
+  --accent-foreground: var(--brand-ink);
+  --destructive: #ba2445;
+  --destructive-foreground: #ffffff;
+  --border: #dce3ee;
+  --input: #dce3ee;
+  --ring: var(--brand);
+  --chart-1: var(--brand);
+  --chart-2: var(--lime);
+  --chart-3: #7696ee;
+  --chart-4: #52627b;
+  --chart-5: var(--brand-ink);
+  --sidebar: var(--section-bg);
+  --sidebar-foreground: var(--brand-ink);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eaf0ff;
+  --sidebar-accent-foreground: var(--brand-ink);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--brand);
+  --leaf: var(--section-bg);
 }
 
 @layer base {
@@ -141,7 +110,7 @@
 
   ::selection {
     background-color: var(--lime);
-    color: var(--forest);
+    color: var(--brand-ink);
   }
 
   :focus-visible {
@@ -156,14 +125,14 @@
 
 @layer components {
   .storefront {
-    color: #0f2e22;
+    color: var(--brand-ink);
     background: var(--background);
   }
   .care-studio {
-    background: #fcfaf6;
+    background: var(--section-bg);
   }
   .marketplace {
-    background: #f6f8f4;
+    background: var(--section-bg);
   }
   .eyebrow {
     font-size: 0.875rem;

@@ -49,7 +49,7 @@ export function CustomerPanels({
           <ServicePanel />
         ) : panel === "loyalty" ? (
           <>
-            <HeartHandshake className="size-10 text-forest" />
+            <HeartHandshake className="size-10 text-brand" />
             <DialogTitle className="text-2xl font-bold">Care that gives back.</DialogTitle>
             <DialogDescription>ReliefPoints · our customer loyalty programme</DialogDescription>
             <p className="text-sm leading-7">
@@ -98,7 +98,7 @@ function AccountPanel({
   if (profile)
     return (
       <>
-        <UserRound className="size-10 text-forest" />
+        <UserRound className="size-10 text-brand" />
         <DialogTitle className="text-2xl font-bold">Hi, {profile.name.split(" ")[0]}</DialogTitle>
         <DialogDescription>Your shopping profile for this visit</DialogDescription>
         <div className="space-y-2 rounded-xl bg-secondary p-4 text-sm">
@@ -294,10 +294,10 @@ function PrescriptionPanel() {
   const [note, setNote] = useState("");
   return (
     <>
-      <Upload className="size-10 text-forest" />
+      <Upload className="size-10 text-brand" />
       <DialogTitle className="text-2xl font-bold">Have a prescription?</DialogTitle>
       <DialogDescription>Let our pharmacy team help with your next refill.</DialogDescription>
-      <label className="flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 border-dashed border-forest/20 bg-secondary/50 px-4 py-8 text-center">
+      <label className="flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 border-dashed border-brand/20 bg-secondary/50 px-4 py-8 text-center">
         <Upload className="size-7" />
         <strong>Choose your prescription</strong>
         <span className="text-sm text-muted-foreground">PDF, PNG or JPEG · maximum 5 MB</span>
@@ -361,7 +361,7 @@ function TrackingPanel() {
   const [show, setShow] = useState(false);
   return (
     <>
-      <PackageSearch className="size-10 text-forest" />
+      <PackageSearch className="size-10 text-brand" />
       <DialogTitle className="text-2xl font-bold">Track your order</DialogTitle>
       <DialogDescription>
         Have your order reference ready? Let’s help you find it.
@@ -415,7 +415,7 @@ function StorePanel() {
   const [location, setLocation] = useState("");
   return (
     <>
-      <MapPin className="size-10 text-forest" />
+      <MapPin className="size-10 text-brand" />
       <DialogTitle className="text-2xl font-bold">Find care near you</DialogTitle>
       <DialogDescription>Ask our team about your nearest ReliefPoint location.</DialogDescription>
       <label className="block text-sm font-semibold">
@@ -456,7 +456,7 @@ function ServicePanel() {
   const localToday = new Date().toLocaleDateString("en-CA");
   return (
     <>
-      <CalendarDays className="size-10 text-forest" />
+      <CalendarDays className="size-10 text-brand" />
       <DialogTitle className="text-2xl font-bold">A little more personal care</DialogTitle>
       <DialogDescription>
         Tell us what you need. Our team will confirm availability.
