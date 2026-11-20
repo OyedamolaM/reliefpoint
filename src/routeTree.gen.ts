@@ -10,33 +10,53 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CareStudioRouteImport } from './routes/care-studio'
+import { Route as MarketplaceRouteImport } from './routes/marketplace'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CareStudioRoute = CareStudioRouteImport.update({
+  id: '/care-studio',
+  path: '/care-studio',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MarketplaceRoute = MarketplaceRouteImport.update({
+  id: '/marketplace',
+  path: '/marketplace',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/care-studio': typeof CareStudioRoute
+  '/marketplace': typeof MarketplaceRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/care-studio': typeof CareStudioRoute
+  '/marketplace': typeof MarketplaceRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/care-studio': typeof CareStudioRoute
+  '/marketplace': typeof MarketplaceRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/care-studio' | '/marketplace'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/care-studio' | '/marketplace'
+  id: '__root__' | '/' | '/care-studio' | '/marketplace'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CareStudioRoute: typeof CareStudioRoute
+  MarketplaceRoute: typeof MarketplaceRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +68,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/care-studio': {
+      id: '/care-studio'
+      path: '/care-studio'
+      fullPath: '/care-studio'
+      preLoaderRoute: typeof CareStudioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/marketplace': {
+      id: '/marketplace'
+      path: '/marketplace'
+      fullPath: '/marketplace'
+      preLoaderRoute: typeof MarketplaceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CareStudioRoute: CareStudioRoute,
+  MarketplaceRoute: MarketplaceRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
