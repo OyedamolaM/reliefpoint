@@ -1,79 +1,70 @@
-# Reliefpoint Lime Pharmacy
+﻿# ReliefPoint Pharmacy
 
-Hi I want to build a website like medplus.com.ng, https://medplusnig.com/
+A standalone pharmacy and wellness storefront built with TanStack Start, React,
+TypeScript and Tailwind CSS v4.
 
-Automated payment and delivery
+Repository: https://github.com/OyedamolaM/reliefpoint
 
-Rewards/loyalty
+## Develop locally
 
-Products
-
-Services
-
-Chat on whatsap
-
-Lead to social media pages
-
-And other features on their site.
-
-Electric lime green is my brand color
-
-This project was built with [Lovable](https://lovable.dev).
-
-**Live app**: https://reliefpoint-lime-pharmacy.lovable.app
-
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/84450c77-c0ab-5602-b0f8-bdb06602e85f).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Install Node.js 22.12+ (Node.js 24 LTS recommended) and Bun, then run:
 
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
+git clone https://github.com/OyedamolaM/reliefpoint.git
+cd reliefpoint
+bun install --frozen-lockfile
+bun run dev
 ```
 
-## Frontend storefront
+## Validate and build
 
-The customer storefront follows the retail structure of medplusnig.com, using
-ReliefPoint forest green and electric lime. The existing /, /marketplace and
-/care-studio routes remain available. The public design switcher and simulated
-points wallet have been removed.
+```sh
+bun run test
+bunx tsc --noEmit
+bun run build
+```
 
-Implemented frontend flows include search suggestions, category and price
-filters, sorting, wishlist, quantity controls, persistent basket, Nigerian
-delivery estimates, prescription file selection, guest checkout, payment method
-selection and checkout summary. Account screens include sign-in, registration,
-password visibility, password confirmation, reset and an optional session-only
-shopping profile. Online authentication is deliberately unconnected.
+## Run the production server
 
-No backend, payment gateway or customer database is connected. Checkout does not
-charge, create orders or award rewards. It offers an explicit WhatsApp basket
-enquiry instead. Prescriptions remain in browser memory; files are not uploaded
-or attached to WhatsApp automatically. Contact fields clear when checkout
-closes; only catalog IDs, quantities and wishlist IDs are stored locally.
-Account passwords are not persisted or submitted. Product visuals are neutral
-illustrations until approved packshots are supplied. Prices, products and
-delivery fees remain presentation data, not verified live inventory.
+```sh
+bun run start
+```
 
-Services, location enquiries and order enquiries provide explicit WhatsApp
-handoffs without inventing appointments, addresses or tracking events. Account
-and payment states explain that their services are not yet connected only where
-those services would be needed. No repeated demo banners appear in the shop.
+The build outputs a standard Node.js server at `.output/server/index.mjs` and
+static assets in `.output/public`. Run the project on a Node.js host or in a
+container. The server accepts `PORT` and `HOST` environment variables. No editor
+platform or proprietary build service is required.
 
-Delivery supports all 36 states and the FCT. Lagos Island zones are NGN 2,500;
-other Lagos areas NGN 2,000; other states NGN 4,500. Baskets over NGN 30,000
-qualify for free delivery. Estimates are confirmed before fulfillment.
+## Frontend features
 
-Run checks with bun run build, bun run test and bunx tsc --noEmit. Production
-integrations, secure uploads, authoritative pricing, server-verified payments
-and durable customer/order records remain future work. Manage schema and
-secrets through Lovable.
+- Retail storefront with ReliefPoint forest green and electric lime branding.
+- Search suggestions, category and price filtering, sorting, mobile filter modal.
+- Wishlist, persistent basket, quantity controls and guest checkout.
+- Nigerian delivery estimates across all 36 states and the FCT.
+- Prescription file selection and payment-method review.
+- Sign-in, registration, password-reset and session shopping-profile screens.
+- Explicit WhatsApp handoffs for products, prescriptions, services and enquiries.
+
+The existing `/`, `/marketplace` and `/care-studio` routes are available. Product
+visuals are neutral illustrations pending approved packshots.
+
+## Integration status
+
+This is a frontend-only project. No customer database, authentication service,
+payment gateway, prescription storage or order service is connected. Checkout
+does not charge, submit orders or award points. Account screens do not create
+accounts, send reset emails or authenticate customers. Optional shopping profiles
+last for the current visit only.
+
+Only catalog IDs, quantities and wishlist IDs are saved locally. Contact fields
+and selected prescription files stay in memory and clear when checkout closes.
+Passwords are not persisted or submitted. Files are not attached to WhatsApp
+automatically. Stock, product prices and delivery fees are presentation data.
+
+Delivery estimates are NGN 2,500 for Lagos Island zones, NGN 2,000 for other Lagos
+areas, and NGN 4,500 for other states. Baskets over NGN 30,000 qualify for free
+delivery. Final availability, pricing and delivery must be confirmed before
+fulfillment.
+
+Keep secrets in the deployment host's environment settings, never in source
+control or browser bundles. Production services can be added when requested.

@@ -63,15 +63,15 @@ describe("retail storefront", () => {
           <PharmacyStorefront design="flagship" />
         </CommerceProvider>,
       );
-      fireEvent.click(screen.getByRole("button", { name: "OTC", exact: true }));
+      fireEvent.click(screen.getByRole("button", { name: "OTC" }));
       expect(screen.queryByLabelText("Sort by")).not.toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: "Filters", exact: true }));
+      fireEvent.click(screen.getByRole("button", { name: "Filters" }));
       const modal = screen.getByRole("dialog", { name: "Filter products" });
       fireEvent.change(within(modal).getByLabelText("Sort by"), { target: { value: "price-low" } });
       fireEvent.click(within(modal).getByText("Apply filters"));
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       expect(screen.queryByLabelText("Sort by")).not.toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: "Filters", exact: true }));
+      fireEvent.click(screen.getByRole("button", { name: "Filters" }));
       expect(screen.getByLabelText("Sort by")).toHaveValue("price-low");
       fireEvent.click(within(screen.getByRole("dialog")).getByText("Clear filters"));
       expect(screen.getByLabelText("Category")).toHaveValue("All");
