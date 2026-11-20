@@ -1,14 +1,34 @@
-# Welcome to your Lovable project
+# Reliefpoint Lime Pharmacy
+
+Hi I want to build a website like medplus.com.ng, https://medplusnig.com/
+
+Automated payment and delivery
+
+Rewards/loyalty
+
+Products
+
+Services
+
+Chat on whatsap
+
+Lead to social media pages
+
+And other features on their site.
+
+Electric lime green is my brand color
 
 This project was built with [Lovable](https://lovable.dev).
 
+**Live app**: https://reliefpoint-lime-pharmacy.lovable.app
+
 ## Build with Lovable
 
-Open your project in the [Lovable editor](https://lovable.dev) and keep building.
+Continue developing this project in the [Lovable editor](https://lovable.dev/projects/84450c77-c0ab-5602-b0f8-bdb06602e85f).
 
 - **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: connect the project to GitHub and every change made in Lovable is committed straight to your repository.
-- **Full ownership**: this code is yours. Push to your repository and your changes sync back into Lovable, ready for your next prompt.
+- **Stay in sync**: every change made in Lovable is committed straight to this repository.
+- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
 
 ## Development
 
@@ -20,10 +40,3 @@ cd <repository-name>
 npm i
 npm run dev
 ```
-
-## Built with
-
-- TanStack Start
-- TypeScript
-- React
-- Tailwind CSS
