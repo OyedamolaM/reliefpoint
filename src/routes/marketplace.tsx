@@ -1,22 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PharmacyStorefront } from "@/components/pharmacy-storefront";
+import { pageMeta } from "@/lib/seo";
 
 export const Route = createFileRoute("/marketplace")({
   head: () => ({
-    meta: [
-      { title: "Pharmacy Marketplace | ReliefPoint Pharmacy" },
-      {
-        name: "description",
-        content:
-          "Explore ReliefPoint’s pharmacy marketplace: everyday medicines, vitamins, skincare, medical devices and Nigerian delivery estimates.",
-      },
-      { property: "og:title", content: "Pharmacy Marketplace | ReliefPoint Pharmacy" },
-      {
-        property: "og:description",
-        content:
-          "Everyday pharmacy essentials and daily health deals. Health essentials, all in one place.",
-      },
-    ],
+    meta: pageMeta(
+      "Pharmacy Marketplace | ReliefPoint Pharmacy",
+      "Explore everyday medicines, vitamins, skincare and medical devices at ReliefPoint Pharmacy Nigeria.",
+      "/marketplace",
+    ),
   }),
   component: MarketplacePage,
 });

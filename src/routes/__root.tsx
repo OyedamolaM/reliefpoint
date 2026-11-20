@@ -74,9 +74,7 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
-    // Replace these placeholders with the app's name and description when first building the app.
-    // Each content route, / included, must still set its own head(). Never add og:image or
-    // twitter:image here: every page without its own would inherit the root's preview image.
+    // Each content route defines its own social preview through pageMeta.
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
@@ -87,6 +85,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "Explore everyday wellness, trusted pharmacy essentials and a little more care, from ReliefPoint Pharmacy.",
       },
       { name: "author", content: "ReliefPoint Pharmacy" },
+      { name: "application-name", content: "ReliefPoint Pharmacy" },
+      { name: "theme-color", content: "#0f2e22" },
       { property: "og:title", content: "ReliefPoint Pharmacy | Everyday care, delivered" },
       {
         property: "og:description",
