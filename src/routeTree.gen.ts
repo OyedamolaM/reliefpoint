@@ -10,12 +10,40 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AboutRouteImport } from './routes/about'
+import { Route as AccountRouteImport } from './routes/account'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as CareStudioRouteImport } from './routes/care-studio'
+import { Route as ContactRouteImport } from './routes/contact'
 import { Route as MarketplaceRouteImport } from './routes/marketplace'
+import { Route as PrivacyPolicyRouteImport } from './routes/privacy-policy'
+import { Route as RefundPolicyRouteImport } from './routes/refund-policy'
+import { Route as ShippingPolicyRouteImport } from './routes/shipping-policy'
+import { Route as ApiSplatRouteImport } from './routes/api.$'
+import { Route as HealthTipsIndexRouteImport } from './routes/health-tips.index'
+import { Route as HealthTipsSlugRouteImport } from './routes/health-tips.$slug'
+import { Route as OrdersIdRouteImport } from './routes/orders.$id'
+import { Route as ProductsSlugRouteImport } from './routes/products.$slug'
+import { Route as HealthTipsPreviewIdRouteImport } from './routes/health-tips.preview.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountRoute = AccountRouteImport.update({
+  id: '/account',
+  path: '/account',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CareStudioRoute = CareStudioRouteImport.update({
@@ -23,40 +51,191 @@ const CareStudioRoute = CareStudioRouteImport.update({
   path: '/care-studio',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MarketplaceRoute = MarketplaceRouteImport.update({
   id: '/marketplace',
   path: '/marketplace',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrivacyPolicyRoute = PrivacyPolicyRouteImport.update({
+  id: '/privacy-policy',
+  path: '/privacy-policy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RefundPolicyRoute = RefundPolicyRouteImport.update({
+  id: '/refund-policy',
+  path: '/refund-policy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ShippingPolicyRoute = ShippingPolicyRouteImport.update({
+  id: '/shipping-policy',
+  path: '/shipping-policy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSplatRoute = ApiSplatRouteImport.update({
+  id: '/api/$',
+  path: '/api/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HealthTipsIndexRoute = HealthTipsIndexRouteImport.update({
+  id: '/health-tips/',
+  path: '/health-tips/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HealthTipsSlugRoute = HealthTipsSlugRouteImport.update({
+  id: '/health-tips/$slug',
+  path: '/health-tips/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OrdersIdRoute = OrdersIdRouteImport.update({
+  id: '/orders/$id',
+  path: '/orders/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProductsSlugRoute = ProductsSlugRouteImport.update({
+  id: '/products/$slug',
+  path: '/products/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HealthTipsPreviewIdRoute = HealthTipsPreviewIdRouteImport.update({
+  id: '/health-tips/preview/$id',
+  path: '/health-tips/preview/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/account': typeof AccountRoute
+  '/admin': typeof AdminRoute
   '/care-studio': typeof CareStudioRoute
+  '/contact': typeof ContactRoute
   '/marketplace': typeof MarketplaceRoute
+  '/privacy-policy': typeof PrivacyPolicyRoute
+  '/refund-policy': typeof RefundPolicyRoute
+  '/shipping-policy': typeof ShippingPolicyRoute
+  '/api/$': typeof ApiSplatRoute
+  '/health-tips/$slug': typeof HealthTipsSlugRoute
+  '/orders/$id': typeof OrdersIdRoute
+  '/products/$slug': typeof ProductsSlugRoute
+  '/health-tips/': typeof HealthTipsIndexRoute
+  '/health-tips/preview/$id': typeof HealthTipsPreviewIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/account': typeof AccountRoute
+  '/admin': typeof AdminRoute
   '/care-studio': typeof CareStudioRoute
+  '/contact': typeof ContactRoute
   '/marketplace': typeof MarketplaceRoute
+  '/privacy-policy': typeof PrivacyPolicyRoute
+  '/refund-policy': typeof RefundPolicyRoute
+  '/shipping-policy': typeof ShippingPolicyRoute
+  '/api/$': typeof ApiSplatRoute
+  '/health-tips/$slug': typeof HealthTipsSlugRoute
+  '/orders/$id': typeof OrdersIdRoute
+  '/products/$slug': typeof ProductsSlugRoute
+  '/health-tips': typeof HealthTipsIndexRoute
+  '/health-tips/preview/$id': typeof HealthTipsPreviewIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/account': typeof AccountRoute
+  '/admin': typeof AdminRoute
   '/care-studio': typeof CareStudioRoute
+  '/contact': typeof ContactRoute
   '/marketplace': typeof MarketplaceRoute
+  '/privacy-policy': typeof PrivacyPolicyRoute
+  '/refund-policy': typeof RefundPolicyRoute
+  '/shipping-policy': typeof ShippingPolicyRoute
+  '/api/$': typeof ApiSplatRoute
+  '/health-tips/$slug': typeof HealthTipsSlugRoute
+  '/orders/$id': typeof OrdersIdRoute
+  '/products/$slug': typeof ProductsSlugRoute
+  '/health-tips/': typeof HealthTipsIndexRoute
+  '/health-tips/preview/$id': typeof HealthTipsPreviewIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/care-studio' | '/marketplace'
+  fullPaths:
+    | '/'
+    | '/about'
+    | '/account'
+    | '/admin'
+    | '/care-studio'
+    | '/contact'
+    | '/marketplace'
+    | '/privacy-policy'
+    | '/refund-policy'
+    | '/shipping-policy'
+    | '/api/$'
+    | '/health-tips/$slug'
+    | '/orders/$id'
+    | '/products/$slug'
+    | '/health-tips/'
+    | '/health-tips/preview/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/care-studio' | '/marketplace'
-  id: '__root__' | '/' | '/care-studio' | '/marketplace'
+  to:
+    | '/'
+    | '/about'
+    | '/account'
+    | '/admin'
+    | '/care-studio'
+    | '/contact'
+    | '/marketplace'
+    | '/privacy-policy'
+    | '/refund-policy'
+    | '/shipping-policy'
+    | '/api/$'
+    | '/health-tips/$slug'
+    | '/orders/$id'
+    | '/products/$slug'
+    | '/health-tips'
+    | '/health-tips/preview/$id'
+  id:
+    | '__root__'
+    | '/'
+    | '/about'
+    | '/account'
+    | '/admin'
+    | '/care-studio'
+    | '/contact'
+    | '/marketplace'
+    | '/privacy-policy'
+    | '/refund-policy'
+    | '/shipping-policy'
+    | '/api/$'
+    | '/health-tips/$slug'
+    | '/orders/$id'
+    | '/products/$slug'
+    | '/health-tips/'
+    | '/health-tips/preview/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AboutRoute: typeof AboutRoute
+  AccountRoute: typeof AccountRoute
+  AdminRoute: typeof AdminRoute
   CareStudioRoute: typeof CareStudioRoute
+  ContactRoute: typeof ContactRoute
   MarketplaceRoute: typeof MarketplaceRoute
+  PrivacyPolicyRoute: typeof PrivacyPolicyRoute
+  RefundPolicyRoute: typeof RefundPolicyRoute
+  ShippingPolicyRoute: typeof ShippingPolicyRoute
+  ApiSplatRoute: typeof ApiSplatRoute
+  HealthTipsSlugRoute: typeof HealthTipsSlugRoute
+  OrdersIdRoute: typeof OrdersIdRoute
+  ProductsSlugRoute: typeof ProductsSlugRoute
+  HealthTipsIndexRoute: typeof HealthTipsIndexRoute
+  HealthTipsPreviewIdRoute: typeof HealthTipsPreviewIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -68,11 +247,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/account': {
+      id: '/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AccountRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/care-studio': {
       id: '/care-studio'
       path: '/care-studio'
       fullPath: '/care-studio'
       preLoaderRoute: typeof CareStudioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/marketplace': {
@@ -82,13 +289,89 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketplaceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/privacy-policy': {
+      id: '/privacy-policy'
+      path: '/privacy-policy'
+      fullPath: '/privacy-policy'
+      preLoaderRoute: typeof PrivacyPolicyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/refund-policy': {
+      id: '/refund-policy'
+      path: '/refund-policy'
+      fullPath: '/refund-policy'
+      preLoaderRoute: typeof RefundPolicyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/shipping-policy': {
+      id: '/shipping-policy'
+      path: '/shipping-policy'
+      fullPath: '/shipping-policy'
+      preLoaderRoute: typeof ShippingPolicyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/$': {
+      id: '/api/$'
+      path: '/api/$'
+      fullPath: '/api/$'
+      preLoaderRoute: typeof ApiSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/health-tips/': {
+      id: '/health-tips/'
+      path: '/health-tips'
+      fullPath: '/health-tips/'
+      preLoaderRoute: typeof HealthTipsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/health-tips/$slug': {
+      id: '/health-tips/$slug'
+      path: '/health-tips/$slug'
+      fullPath: '/health-tips/$slug'
+      preLoaderRoute: typeof HealthTipsSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/orders/$id': {
+      id: '/orders/$id'
+      path: '/orders/$id'
+      fullPath: '/orders/$id'
+      preLoaderRoute: typeof OrdersIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/products/$slug': {
+      id: '/products/$slug'
+      path: '/products/$slug'
+      fullPath: '/products/$slug'
+      preLoaderRoute: typeof ProductsSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/health-tips/preview/$id': {
+      id: '/health-tips/preview/$id'
+      path: '/health-tips/preview/$id'
+      fullPath: '/health-tips/preview/$id'
+      preLoaderRoute: typeof HealthTipsPreviewIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AboutRoute: AboutRoute,
+  AccountRoute: AccountRoute,
+  AdminRoute: AdminRoute,
   CareStudioRoute: CareStudioRoute,
+  ContactRoute: ContactRoute,
   MarketplaceRoute: MarketplaceRoute,
+  PrivacyPolicyRoute: PrivacyPolicyRoute,
+  RefundPolicyRoute: RefundPolicyRoute,
+  ShippingPolicyRoute: ShippingPolicyRoute,
+  ApiSplatRoute: ApiSplatRoute,
+  HealthTipsSlugRoute: HealthTipsSlugRoute,
+  OrdersIdRoute: OrdersIdRoute,
+  ProductsSlugRoute: ProductsSlugRoute,
+  HealthTipsIndexRoute: HealthTipsIndexRoute,
+  HealthTipsPreviewIdRoute: HealthTipsPreviewIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

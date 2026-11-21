@@ -12,6 +12,13 @@ import {
   ShieldCheck,
   Heart,
 } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { toast } from "sonner";
+import { useAccount } from "./auth-provider";
+import { LiveCheckout } from "./live-checkout";
+import { api, send, notifyError } from "@/lib/api";
+import { slugify } from "@/lib/contracts";
+import type { PublicSettings } from "@/lib/contracts";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -29,6 +36,7 @@ import {
 } from "@/components/customer-panels";
 import {
   CART_STORAGE_KEY,
+  categories,
   WISHLIST_STORAGE_KEY,
   destinations,
   nigerianStates,
@@ -43,11 +51,16 @@ import {
 } from "@/lib/commerce";
 
 type Commerce = {
+  categories: string[];
+  settings: PublicSettings;
+  catalog: Product[];
+  backendEnabled: boolean;
+  mergeCatalog: (products: Product[]) => void;
   cart: CartItem[];
   count: number;
   wishlist: string[];
   profile: ShoppingProfile | null;
-  add: (product: Product) => void;
+  add: (product: Product, quantity?: number) => void;
   openCart: () => void;
   inspect: (product: Product) => void;
   toggleWishlist: (id: string) => void;
@@ -60,7 +73,24 @@ export function useCommerce() {
   if (!value) throw new Error("CommerceProvider is required");
   return value;
 }
-export function CommerceProvider({ children }: { children: ReactNode }) {
+export function CommerceProvider({
+  children,
+  initialCatalog = products,
+  backendEnabled = false,
+  businessSettings = {},
+  categoryNames = [],
+}: {
+  children: ReactNode;
+  initialCatalog?: Product[];
+  backendEnabled?: boolean;
+  businessSettings?: PublicSettings;
+  categoryNames?: string[];
+}) {
+  const account = useAccount();
+  const [catalog, setCatalog] = useState(initialCatalog);
+  const [syncedUser, setSyncedUser] = useState<string | null>(null);
+  const mergeCatalog = (incoming: Product[]) =>
+    setCatalog((current) => [...new Map([...current, ...incoming].map((p) => [p.id, p])).values()]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [ready, setReady] = useState(false);
@@ -81,26 +111,148 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   const needsPrescription = cart.some((item) => item.product.prescription);
   const count = cart.reduce((n, item) => n + item.quantity, 0);
   useEffect(() => {
+    if (backendEnabled && account.loading) return undefined;
+    if (backendEnabled) {
+      let active = true;
+      try {
+        const owner = localStorage.getItem("reliefpoint.basket.owner.v1");
+        const permitted = !owner || owner === "guest" || owner === account.user?.id;
+        if (!permitted) {
+          setCart([]);
+          setWishlist([]);
+          setReady(true);
+          return undefined;
+        }
+        // Account baskets are restored from the database; their local mirror must not be merged twice.
+        if(owner&&owner===account.user?.id){setCart([]);setWishlist([]);setReady(true);return undefined;}
+        const rawCart = permitted ? localStorage.getItem(CART_STORAGE_KEY) : null;
+        const rawWishlist = permitted ? localStorage.getItem(WISHLIST_STORAGE_KEY) : null;
+        const basket: unknown = JSON.parse(rawCart ?? "[]");
+        const saved: unknown = JSON.parse(rawWishlist ?? "[]");
+        const ids = [
+          ...new Set([
+            ...(Array.isArray(basket) ? basket.map((i) => i?.id) : []),
+            ...(Array.isArray(saved) ? saved : []),
+          ]),
+        ]
+          .filter((id): id is string => typeof id === "string" && /^[a-f0-9-]{36}$/i.test(id))
+          .slice(0, 200);
+        if (ids.length) {
+          void send<{ products: Product[] }>("catalog/resolve", { ids })
+            .then((result) => {
+              if (!active) return;
+              mergeCatalog(result.products);
+              setCart(restoreCart(rawCart, result.products));
+              setWishlist(restoreWishlist(rawWishlist, result.products));
+              setReady(true);
+            })
+            .catch(notifyError);
+          return () => {
+            active = false;
+          };
+        }
+      } catch {
+        /* Invalid or unavailable local storage does not prevent shopping. */
+      }
+    }
     try {
-      setCart(restoreCart(localStorage.getItem(CART_STORAGE_KEY)));
-      setWishlist(restoreWishlist(localStorage.getItem(WISHLIST_STORAGE_KEY)));
+      setCart(restoreCart(localStorage.getItem(CART_STORAGE_KEY), initialCatalog));
+      setWishlist(restoreWishlist(localStorage.getItem(WISHLIST_STORAGE_KEY), initialCatalog));
     } catch {
       /* Storage may be unavailable in private browsing. */
     }
     setReady(true);
-  }, []);
+    return undefined;
+  }, [backendEnabled, account.loading]);
   useEffect(() => {
-    if (!ready) return;
+    setProfile(account.user ? { name: account.user.name, email: account.user.email } : null);
+    if (!account.user) {
+      if (syncedUser) {
+        setCart([]);
+        setWishlist([]);
+        setSyncedUser(null);
+        setCartOpen(false);
+        setStep(0);
+        clearContact();
+      }
+      return;
+    }
+    if (!backendEnabled || !ready || syncedUser === account.user.id) return;
+    const switching = !!syncedUser && syncedUser !== account.user.id;
+    if (switching) {
+      setCart([]);
+      setWishlist([]);
+      setCartOpen(false);
+      setStep(0);
+      clearContact();
+    }
+    let active = true;
+    void api<{ cart: { id: string; quantity: number }[]; wishlist: string[] }>("customer/shopping")
+      .then(async (saved) => {
+        const ids = [
+          ...new Set([
+            ...saved.cart.map((i) => i.id),
+            ...saved.wishlist,
+            ...(switching ? [] : cart.map((i) => i.product.id)),
+            ...(switching ? [] : wishlist),
+          ]),
+        ];
+        const resolved = await send<{ products: Product[] }>("catalog/resolve", { ids });
+        if (!active) return;
+        mergeCatalog(resolved.products);
+        setCart((current) => {
+          const quantities = new Map(saved.cart.map((i) => [i.id, i.quantity]));
+          for (const item of current)
+            quantities.set(
+              item.product.id,
+              Math.min(99, (quantities.get(item.product.id) ?? 0) + item.quantity),
+            );
+          return [...quantities].flatMap(([id, quantity]) => {
+            const product = resolved.products.find((p) => p.id === id);
+            return product?.inStock ? [{ product, quantity }] : [];
+          });
+        });
+        setWishlist((current) => [...new Set([...current, ...saved.wishlist])]);
+        setSyncedUser(account.user!.id);
+      })
+      .catch(notifyError);
+    return () => {
+      active = false;
+    };
+  }, [account.user?.id, backendEnabled, ready]);
+  useEffect(() => {
+    if (!backendEnabled || !account.user || syncedUser !== account.user.id) return;
+    const timer = setTimeout(() => {
+      void send("customer/shopping", {
+        cart: cart.map((i) => ({ id: i.product.id, quantity: i.quantity })),
+        wishlist,
+      }).catch(notifyError);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [cart, wishlist, syncedUser, account.user?.id, backendEnabled]);
+  useEffect(() => {
+    if (error) toast.error(error, { id: error });
+  }, [error]);
+  useEffect(() => {
+    if (
+      !ready ||
+      (backendEnabled &&
+        (account.loading ||
+          (!!account.user && syncedUser !== account.user.id) ||
+          (!!syncedUser && syncedUser !== account.user?.id)))
+    )
+      return;
     try {
       localStorage.setItem(
         CART_STORAGE_KEY,
         JSON.stringify(cart.map(({ product, quantity }) => ({ id: product.id, quantity }))),
       );
       localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(wishlist));
+      localStorage.setItem("reliefpoint.basket.owner.v1", account.user?.id ?? "guest");
     } catch {
       /* The current visit continues without persistence. */
     }
-  }, [cart, wishlist, ready]);
+  }, [cart, wishlist, ready, account.user?.id, account.loading, syncedUser, backendEnabled]);
   const clearContact = () => {
     setContact({ name: "", email: "", phone: "", address: "", note: "" });
     setFile(null);
@@ -121,16 +273,20 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
     setError("");
     setCartOpen(true);
   };
-  const add = (p: Product) => {
-    if (!p.inStock) return;
+  const add = (p: Product, quantity = 1) => {
+    if (!p.inStock) {
+      toast.info("This item is currently unavailable.");
+      return;
+    }
+    mergeCatalog([p]);
     setCart((items) =>
       items.some((item) => item.product.id === p.id)
         ? items.map((item) =>
             item.product.id === p.id
-              ? { ...item, quantity: Math.min(99, item.quantity + 1) }
+              ? { ...item, quantity: Math.min(99, item.quantity + quantity) }
               : item,
           )
-        : [...items, { product: p, quantity: 1 }],
+        : [...items, { product: p, quantity: Math.min(99, quantity) }],
     );
     openCart();
   };
@@ -144,10 +300,15 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
         )
         .filter((item) => item.quantity > 0),
     );
-  const toggleWishlist = (id: string) =>
+  const toggleWishlist = (id: string) => {
+    toast.success(
+      wishlist.includes(id) ? "Removed from your wishlist." : "Saved to your wishlist.",
+      { id: "wishlist" },
+    );
     setWishlist((items) =>
       items.includes(id) ? items.filter((item) => item !== id) : [...items, id],
     );
+  };
   const startDelivery = () => {
     if (profile) setContact((c) => ({ ...c, name: profile.name, email: profile.email }));
     setStep(1);
@@ -175,13 +336,29 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   return (
     <Context.Provider
       value={{
+        categories: backendEnabled
+          ? [...new Set([...categoryNames, ...catalog.map((p) => p.category)])]
+          : [...categories],
+        settings: businessSettings,
+        catalog,
+        backendEnabled,
+        mergeCatalog,
         cart,
         count,
         wishlist,
         profile,
         add,
         openCart,
-        inspect: setProduct,
+        inspect: (p) => {
+          setProduct(p);
+          if (p.live && p.slug)
+            void api<{ item: Product | null }>(`product/${encodeURIComponent(p.slug)}`)
+              .then((result) => {
+                if (result.item)
+                  setProduct((current) => (current?.id === p.id ? result.item : current));
+              })
+              .catch(notifyError);
+        },
         toggleWishlist,
         openWishlist: () => setWishlistOpen(true),
         openPanel: setPanel,
@@ -239,15 +416,17 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
               <div className="rounded-xl bg-secondary p-4 text-sm leading-6">
                 <p>
                   <strong>Directions: </strong>
-                  {product.prescription
-                    ? "Use only as prescribed after pharmacist review."
-                    : product.category === "Medical Devices"
-                      ? "Follow the manufacturer’s setup and operating instructions."
-                      : "Follow the directions on the product label. Ask a pharmacist about suitability and interactions."}
+                  {product.directions ??
+                    (product.prescription
+                      ? "Use only as prescribed after pharmacist review."
+                      : product.category === "Medical Devices"
+                        ? "Follow the manufacturer’s setup and operating instructions."
+                        : "Follow the directions on the product label. Ask a pharmacist about suitability and interactions.")}
                 </p>
                 <p className="mt-3">
-                  <strong>Storage: </strong>Keep in original packaging, away from children. Follow
-                  the storage conditions on the pack.
+                  <strong>Storage: </strong>
+                  {product.storage ??
+                    "Keep in original packaging, away from children. Follow the storage conditions on the pack."}
                 </p>
               </div>
               <a
@@ -260,6 +439,14 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
               >
                 Ask a pharmacist about this product
               </a>
+              <Link
+                to="/products/$slug"
+                params={{ slug: product.slug ?? slugify(product.name) }}
+                onClick={() => setProduct(null)}
+                className="block text-sm font-semibold underline"
+              >
+                View full product details
+              </Link>
             </div>
           )}
         </DialogContent>
@@ -273,7 +460,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
           {wishlist.length ? (
             <ul className="mt-6 divide-y">
               {wishlist
-                .map((id) => products.find((p) => p.id === id))
+                .map((id) => catalog.find((p) => p.id === id))
                 .filter((p): p is Product => !!p)
                 .map((p) => (
                   <li key={p.id} className="flex gap-3 py-4">
@@ -345,17 +532,19 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
           {step === 0 &&
             (cart.length ? (
               <>
-                <div className="rounded-xl bg-leaf p-3 text-sm">
-                  {quote.subtotal > 30000
-                    ? "Your basket qualifies for free delivery."
-                    : `Add ${formatNaira(30001 - quote.subtotal)} more for free delivery.`}
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
-                    <div
-                      className="h-full bg-brand transition-all"
-                      style={{ width: `${Math.min(100, (quote.subtotal / 30001) * 100)}%` }}
-                    />
+                {!backendEnabled && (
+                  <div className="rounded-xl bg-leaf p-3 text-sm">
+                    {quote.subtotal > 30000
+                      ? "Your basket qualifies for free delivery."
+                      : `Add ${formatNaira(30001 - quote.subtotal)} more for free delivery.`}
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
+                      <div
+                        className="h-full bg-brand transition-all"
+                        style={{ width: `${Math.min(100, (quote.subtotal / 30001) * 100)}%` }}
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
                 <ul className="divide-y">
                   {cart.map(({ product: p, quantity }) => (
                     <li className="flex gap-3 py-4" key={p.id}>
@@ -434,7 +623,8 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
                 <Button onClick={closeCart}>Start shopping</Button>
               </div>
             ))}
-          {step === 1 && (
+          {backendEnabled && step > 0 && <LiveCheckout cart={cart} onBack={() => setStep(0)} />}
+          {!backendEnabled && step === 1 && (
             <form
               className="space-y-4"
               onSubmit={(e) => {
@@ -592,7 +782,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
               </Button>
             </form>
           )}
-          {step === 2 && (
+          {!backendEnabled && step === 2 && (
             <div className="space-y-5">
               <div className="rounded-xl border p-4 text-sm leading-6">
                 <p className="font-bold">Delivery details</p>
@@ -673,7 +863,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
               </Button>
             </div>
           )}
-          {step === 3 && (
+          {!backendEnabled && step === 3 && (
             <div className="space-y-5 py-5">
               <CheckCircle2 className="size-12 text-brand" />
               <h2 className="text-2xl font-bold">Everything in one place.</h2>

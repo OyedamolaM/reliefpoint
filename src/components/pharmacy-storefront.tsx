@@ -32,6 +32,10 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useEffect } from "react";
+import { Link } from "@tanstack/react-router";
+import { api, notifyError } from "@/lib/api";
+import { HealthTipsSection } from "./blog";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { useCommerce } from "@/components/commerce-provider";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -127,7 +131,54 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
   const activeSlide = slides[slide] ?? slides[0]!;
   const filtering =
     showAll || !!query.trim() || category !== "All" || dealsOnly || maxPrice < 100000 || stockOnly;
-  const filtered = filterProducts(query, category, maxPrice, stockOnly)
+  const [remote, setRemote] = useState(shop.catalog);
+  const [page, setPage] = useState(0);
+  const [more, setMore] = useState(false);
+  const [searching, setSearching] = useState(false);
+  useEffect(() => {
+    setPage(0);
+  }, [query, category, maxPrice, stockOnly, dealsOnly, sort]);
+  useEffect(() => {
+    if (!shop.backendEnabled || !filtering) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      setSearching(true);
+      const params = new URLSearchParams({
+        q: query,
+        category,
+          max: maxPrice === 100000 ? "" : String(maxPrice * 100),
+        stock: stockOnly ? "1" : "0",
+        deals: dealsOnly ? "1" : "0",
+        sort,
+        page: String(page),
+      });
+      void api<{ products: Product[]; more: boolean }>(`catalog?${params}`)
+        .then((result) => {
+          if (!controller.signal.aborted) {
+            setRemote(result.products);
+            setMore(result.more);
+            shop.mergeCatalog(result.products);
+          }
+        })
+        .catch((error) => {
+          if (!controller.signal.aborted) notifyError(error);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setSearching(false);
+        });
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query, category, maxPrice, stockOnly, dealsOnly, sort, page, filtering, shop.backendEnabled]);
+  const filtered = (
+    shop.backendEnabled
+      ? filtering
+        ? remote
+        : shop.catalog.slice(0, 24)
+      : filterProducts(query, category, maxPrice, stockOnly)
+  )
     .filter((p) => !dealsOnly || p.deal)
     .sort((a, b) =>
       sort === "price-low"
@@ -177,7 +228,7 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
           }}
         >
           <option value="All">All categories</option>
-          {categories.map((c) => (
+          {shop.categories.map((c) => (
             <option key={c}>{c}</option>
           ))}
         </select>
@@ -426,6 +477,7 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
                 Upload prescription
               </button>
               <button onClick={() => shop.openPanel("service")}>Health services</button>
+              <Link to="/health-tips">Health Tips</Link>
             </nav>
             <button className="track-link" onClick={() => shop.openPanel("tracking")}>
               <PackageSearch size={17} />
@@ -471,7 +523,7 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
             <h3 className="mt-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">
               Shop by category
             </h3>
-            {categories.map((c) => (
+            {shop.categories.map((c) => (
               <button key={c} onClick={() => choose(c)}>
                 {c}
                 <ChevronRight size={16} />
@@ -625,7 +677,7 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
         <section className="retail-container category-section">
           <SectionHeading eyebrow="FIND YOUR EVERYDAY ESSENTIALS" title="Shop by category" />
           <div className="category-circles">
-            {categories.map((c, i) => {
+            {shop.categories.map((c, i) => {
               const Icon = categoryIcons[i] ?? Pill;
               return (
                 <button key={c} onClick={() => choose(c)}>
@@ -745,6 +797,11 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
               {query.trim() ? ` matching “${query.trim()}”` : ""}
             </p>
           )}
+          {searching && (
+            <p role="status" className="my-3 text-sm">
+              Finding products…
+            </p>
+          )}
           {filtered.length ? (
             <div className="retail-product-grid">
               {(filtering ? filtered : filtered.slice(0, 5)).map((p) => (
@@ -759,6 +816,17 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
               <Button onClick={reset} variant="outline">
                 Clear filters
               </Button>
+            </div>
+          )}
+          {shop.backendEnabled && filtering && (
+            <div className="mt-6 flex justify-center gap-6">
+              <button disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+                Previous
+              </button>
+              <span>Page {page + 1}</span>
+              <button disabled={!more} onClick={() => setPage((p) => p + 1)}>
+                Next
+              </button>
             </div>
           )}
         </section>
@@ -801,7 +869,7 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
             <ProductRail
               title="New in your care routine"
               eyebrow="A FRESH FIND FOR EVERY DAY"
-              items={[...products].reverse().slice(0, 9)}
+              items={[...shop.catalog].reverse().slice(0, 9)}
               onViewAll={() => {
                 reset();
                 setShowAll(true);
@@ -829,7 +897,7 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
             <ProductRail
               title="Health & wellness picks"
               eyebrow="LITTLE ESSENTIALS, BIG ON CARE"
-              items={products.filter((p) => p.deal)}
+              items={shop.catalog.filter((p) => p.deal)}
               onViewAll={hotDeals}
             />
             <section className="retail-container care-editorial">
@@ -875,7 +943,7 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
               {
                 question: "How is my delivery fee calculated?",
                 answer:
-                  "Delivery estimates start at ₦2,000 for Lagos Mainland, ₦2,500 for Lagos Island zones, and ₦4,500 for other states. Baskets over ₦30,000 qualify for free delivery. Enter your address at checkout to see your estimate.",
+                  "Select your delivery area at checkout to see the applicable charge, any free-delivery offer and the estimated delivery time. Contact our team if your area is not listed.",
               },
               {
                 question: "Can I order prescription medicines?",
@@ -914,6 +982,7 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
           </a>
         </section>
       </main>
+      <HealthTipsSection />
       <footer className="retail-footer">
         <div className="retail-container footer-grid">
           <div>
@@ -951,6 +1020,23 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
           </div>
           <div>
             <h3>Care & services</h3>
+            {shop.settings.pcn_logo && (
+              <img
+                src={shop.settings.pcn_logo}
+                alt="Pharmacy Council of Nigeria"
+                className="mb-3 h-20 w-auto object-contain"
+                loading="lazy"
+              />
+            )}
+            <p className="text-sm">
+              Pharm Chisom Onyejegbu
+              <br />
+              Pharmacist registration number 027390
+            </p>
+            {shop.settings.address && <p className="text-sm">{shop.settings.address}</p>}
+            {shop.settings.opening_hours && (
+              <p className="text-sm">{shop.settings.opening_hours}</p>
+            )}
             <button onClick={() => shop.openPanel("prescription")}>Prescription refill</button>
             <button onClick={() => shop.openPanel("service")}>Health services</button>
             <button onClick={() => shop.openPanel("stores")}>Find a location</button>
@@ -967,6 +1053,12 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
           </div>
           <div>
             <h3>We’re here to help</h3>
+            <Link to="/health-tips">Health Tips</Link>
+            <Link to="/about">About us</Link>
+            <Link to="/contact">Contact us</Link>
+            <Link to="/privacy-policy">Privacy policy</Link>
+            <Link to="/refund-policy">Refund policy</Link>
+            <Link to="/shipping-policy">Shipping policy</Link>
             <button onClick={() => shop.openPanel("account")}>My account</button>
             <button onClick={shop.openWishlist}>My wishlist</button>
             <button onClick={() => shop.openPanel("tracking")}>Track an order</button>
@@ -982,7 +1074,7 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
         </div>
         <div className="retail-container footer-bottom">
           <span>© {new Date().getFullYear()} ReliefPoint Pharmacy. All rights reserved.</span>
-          <span>Prices and availability are confirmed before payment.</span>
+          <span>Pharm Chisom Onyejegbu · Pharmacist registration 027390</span>
           <span className="inline-flex items-center gap-2">
             <CreditCard size={17} />
             Card · Bank transfer · USSD

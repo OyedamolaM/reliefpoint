@@ -12,6 +12,11 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { CommerceProvider } from "@/components/commerce-provider";
+import { AuthProvider } from "@/components/auth-provider";
+import { Toaster } from "@/components/ui/sonner";
+import { loadStorefront } from "@/lib/public-data";
+import { toast } from "sonner";
+import { GlobalNotifications } from "@/components/global-notifications";
 
 function NotFoundComponent() {
   return (
@@ -38,7 +43,7 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: ErrorComponentProps) {
   const router = useRouter();
   useEffect(() => {
-    console.error(error);
+    toast.error("This page couldn’t load. Please try again.", { id: "page-error" });
   }, [error]);
 
   return (
@@ -73,6 +78,7 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  loader: () => loadStorefront(),
   head: () => ({
     // Each content route defines its own social preview through pageMeta.
     meta: [
@@ -124,6 +130,8 @@ function RootShell({ children }: { children: ReactNode }) {
       </head>
       <body>
         {children}
+        <Toaster position="top-right" richColors closeButton />
+        <GlobalNotifications />
         <Scripts />
       </body>
     </html>
@@ -132,12 +140,20 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const data = Route.useLoaderData();
 
   return (
     <QueryClientProvider client={queryClient}>
-      <CommerceProvider>
-        <Outlet />
-      </CommerceProvider>
+      <AuthProvider enabled={data.configured}>
+        <CommerceProvider
+          initialCatalog={data.products}
+          backendEnabled={data.configured}
+          businessSettings={data.settings}
+          categoryNames={data.categories}
+        >
+          <Outlet />
+        </CommerceProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

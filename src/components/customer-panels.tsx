@@ -12,6 +12,11 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { AuthForm } from "./account-page";
+import { send, notifyError } from "@/lib/api";
+import { toast } from "sonner";
+import { Link } from "@tanstack/react-router";
+import { useAccount } from "./auth-provider";
 import { Button } from "@/components/ui/button";
 import { nigerianStates, whatsapp } from "@/lib/commerce";
 
@@ -38,7 +43,7 @@ export function CustomerPanels({
     >
       <DialogContent className="max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-2xl">
         {panel === "account" ? (
-          <AccountPanel profile={profile} onProfile={onProfile} onClose={onClose} />
+          <AccountDialog onClose={onClose} />
         ) : panel === "prescription" ? (
           <PrescriptionPanel />
         ) : panel === "tracking" ? (
@@ -73,340 +78,116 @@ export function CustomerPanels({
     </Dialog>
   );
 }
-function AccountPanel({
-  profile,
-  onProfile,
-  onClose,
-}: {
-  profile: ShoppingProfile | null;
-  onProfile: (profile: ShoppingProfile | null) => void;
-  onClose: () => void;
-}) {
-  const [mode, setMode] = useState<"signin" | "register" | "reset" | "profile">("signin");
-  const [showPassword, setShowPassword] = useState(false);
-  const [message, setMessage] = useState("");
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const changeMode = (next: typeof mode) => {
-    setMode(next);
-    setMessage("");
-    setPassword("");
-    setConfirm("");
-  };
-  if (profile)
-    return (
-      <>
-        <UserRound className="size-10 text-brand" />
-        <DialogTitle className="text-2xl font-bold">Hi, {profile.name.split(" ")[0]}</DialogTitle>
-        <DialogDescription>Your shopping profile for this visit</DialogDescription>
-        <div className="space-y-2 rounded-xl bg-secondary p-4 text-sm">
-          <p className="font-bold">{profile.name}</p>
-          <p>{profile.email}</p>
-          <p className="pt-2 text-muted-foreground">
-            Guest profile · available until this page is refreshed.
-          </p>
-        </div>
-        <div className="rounded-xl border p-4">
-          <h3 className="font-bold">Orders</h3>
-          <p className="mt-2 text-sm text-muted-foreground">
-            No orders to show. Online order history will be available with your connected account.
-          </p>
-        </div>
-        <Button onClick={onClose}>Continue shopping</Button>
-        <Button variant="ghost" onClick={() => onProfile(null)}>
-          <LogOut className="size-4" />
-          Clear shopping profile
-        </Button>
-      </>
-    );
+function AccountDialog({ onClose }: { onClose: () => void }) {
+  const account = useAccount();
   return (
     <>
-      <span className="inline-flex size-12 items-center justify-center rounded-full bg-leaf">
-        <UserRound className="size-6" />
-      </span>
-      <DialogTitle className="text-2xl font-bold">
-        {mode === "register"
-          ? "Create your account"
-          : mode === "reset"
-            ? "Forgot your password?"
-            : mode === "profile"
-              ? "Make yourself at home."
-              : "Welcome to ReliefPoint"}
-      </DialogTitle>
-      <DialogDescription>
-        {mode === "profile"
-          ? "Save your name and email for checkout during this visit."
-          : mode === "reset"
-            ? "Enter the email associated with your account."
-            : "Your everyday care starts here."}
-      </DialogDescription>
-      {mode !== "profile" && mode !== "reset" && (
-        <div className="grid grid-cols-2 rounded-lg bg-secondary p-1">
-          {(["signin", "register"] as const).map((tab) => (
-            <button
-              key={tab}
-              className={`rounded-md py-2.5 text-sm font-semibold ${mode === tab ? "bg-white shadow-sm" : ""}`}
-              onClick={() => changeMode(tab)}
-            >
-              {tab === "signin" ? "Sign in" : "Register"}
-            </button>
-          ))}
-        </div>
-      )}
-      <form
-        className="space-y-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (mode === "profile") {
-            if (!name.trim()) {
-              setMessage("Enter your name.");
-              return;
-            }
-            onProfile({ name: name.trim(), email: email.trim() });
-            return;
-          }
-          if (mode === "register" && password !== confirm) {
-            setMessage("The passwords do not match.");
-            return;
-          }
-          setPassword("");
-          setConfirm("");
-          setMessage(
-            mode === "reset"
-              ? "Password reset is not connected yet. No email has been sent."
-              : mode === "register"
-                ? "Account registration is not connected yet. Your account has not been created."
-                : "Online sign-in is not connected yet. Continue as a guest or use a shopping profile.",
-          );
-        }}
-      >
-        {(mode === "register" || mode === "profile") && (
-          <label className="block text-sm font-semibold">
-            Full name
-            <input
-              className="commerce-input mt-1"
-              required
-              minLength={2}
-              maxLength={100}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoComplete="name"
-            />
-          </label>
-        )}
-        <label className="block text-sm font-semibold">
-          Email address
-          <input
-            className="commerce-input mt-1"
-            type="email"
-            required
-            maxLength={150}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
-          />
-        </label>
-        {(mode === "signin" || mode === "register") && (
-          <label className="block text-sm font-semibold">
-            Password
-            <div className="relative">
-              <input
-                className="commerce-input mt-1 pr-12"
-                type={showPassword ? "text" : "password"}
-                minLength={8}
-                maxLength={128}
-                required
-                value={password}
-                autoComplete={mode === "register" ? "new-password" : "current-password"}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              <button
-                type="button"
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                className="absolute right-3 top-3"
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
-              </button>
-            </div>
-          </label>
-        )}
-        {mode === "register" && (
-          <label className="block text-sm font-semibold">
-            Confirm password
-            <input
-              className="commerce-input mt-1"
-              required
-              type={showPassword ? "text" : "password"}
-              minLength={8}
-              maxLength={128}
-              value={confirm}
-              autoComplete="new-password"
-              onChange={(e) => setConfirm(e.target.value)}
-            />
-          </label>
-        )}
-        {mode === "signin" && (
+      <DialogTitle className="sr-only">Your account</DialogTitle>
+      <DialogDescription className="sr-only">Manage your ReliefPoint account</DialogDescription>
+      {account.user ? (
+        <div className="space-y-5">
+          <h2 className="text-2xl font-bold">Hello, {account.user.name || "there"}</h2>
+          <p>{account.user.email}</p>
+          <Button asChild>
+            <Link to="/account" onClick={onClose}>
+              Orders & account
+            </Link>
+          </Button>
+          {account.user.roles.length > 0 && (
+            <Link to="/admin" onClick={onClose} className="block underline">
+              Administration
+            </Link>
+          )}
           <button
-            type="button"
-            className="block text-sm font-semibold underline"
-            onClick={() => changeMode("reset")}
+            className="block underline"
+            onClick={() =>
+              void account
+                .logout()
+                .then(() => toast.success("You’ve been signed out."))
+                .catch(notifyError)
+            }
           >
-            Forgot password?
+            Sign out
           </button>
-        )}
-        {message && (
-          <p role="status" className="rounded-lg bg-secondary p-3 text-sm leading-6">
-            {message}
-          </p>
-        )}
-        <Button className="h-12 w-full" type="submit">
-          {mode === "register"
-            ? "Create account"
-            : mode === "reset"
-              ? "Send reset link"
-              : mode === "profile"
-                ? "Use shopping profile"
-                : "Sign in"}
-        </Button>
-      </form>
-      {mode !== "profile" && (
-        <button className="text-sm font-semibold underline" onClick={() => changeMode("profile")}>
-          Use a shopping profile for this visit
-        </button>
+        </div>
+      ) : (
+        <AuthForm />
       )}
-      {(mode === "profile" || mode === "reset") && (
-        <button className="text-sm" onClick={() => changeMode("signin")}>
-          Back to sign in
-        </button>
-      )}
-      <Button variant="ghost" onClick={onClose}>
-        Continue as guest
-      </Button>
     </>
   );
 }
 function PrescriptionPanel() {
-  const [file, setFile] = useState<File | null>(null);
-  const [error, setError] = useState("");
-  const [note, setNote] = useState("");
   return (
     <>
       <Upload className="size-10 text-brand" />
-      <DialogTitle className="text-2xl font-bold">Have a prescription?</DialogTitle>
-      <DialogDescription>Let our pharmacy team help with your next refill.</DialogDescription>
-      <label className="flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 border-dashed border-brand/20 bg-secondary/50 px-4 py-8 text-center">
-        <Upload className="size-7" />
-        <strong>Choose your prescription</strong>
-        <span className="text-sm text-muted-foreground">PDF, PNG or JPEG · maximum 5 MB</span>
-        <input
-          aria-label="Choose prescription file"
-          className="max-w-full text-sm"
-          type="file"
-          accept="application/pdf,image/png,image/jpeg"
-          onChange={(e) => {
-            const selected = e.target.files?.[0];
-            setFile(null);
-            if (!selected) return;
-            if (
-              selected.size > 5242880 ||
-              !["application/pdf", "image/png", "image/jpeg"].includes(selected.type)
-            ) {
-              setError("Choose a PDF, PNG or JPEG under 5 MB.");
-              e.target.value = "";
-              return;
-            }
-            setFile(selected);
-            setError("");
-          }}
-        />
-      </label>
-      {file && <p className="break-all text-sm font-semibold">Selected: {file.name}</p>}
-      <label className="text-sm font-semibold">
-        Note for the pharmacist (optional)
-        <textarea
-          className="commerce-input mt-1"
-          value={note}
-          maxLength={500}
-          onChange={(e) => setNote(e.target.value)}
-        />
-      </label>
-      <p className="text-sm leading-6 text-muted-foreground">
-        Your file stays on this device; secure uploads are not connected yet. Contact our team for
-        the next step. Files are not attached to WhatsApp automatically.
+      <DialogTitle className="text-2xl font-bold">Prescription care</DialogTitle>
+      <DialogDescription>
+        Upload your prescription securely during checkout or from your order page.
+      </DialogDescription>
+      <p className="text-sm leading-7">
+        Your pharmacist will review it before dispensing. For help finding an item, speak to our
+        team.
       </p>
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
       <Button asChild>
         <a
-          href={whatsapp(
-            `Hello ReliefPoint, I'd like help with a prescription refill.${note ? ` Note: ${note}` : ""} Please advise how I can share my prescription securely.`,
-          )}
+          href={whatsapp("Hello ReliefPoint, I need help with a prescription refill.")}
           target="_blank"
           rel="noreferrer"
         >
-          Speak to the pharmacy team
+          Speak to a pharmacist
         </a>
       </Button>
+      <Link to="/account" className="text-sm underline">
+        View my orders
+      </Link>
     </>
   );
 }
 function TrackingPanel() {
-  const [reference, setReference] = useState("");
-  const [show, setShow] = useState(false);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
   return (
     <>
       <PackageSearch className="size-10 text-brand" />
       <DialogTitle className="text-2xl font-bold">Track your order</DialogTitle>
       <DialogDescription>
-        Have your order reference ready? Let’s help you find it.
+        We?ll email a secure link to the address used at checkout.
       </DialogDescription>
       <form
         className="space-y-4"
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault();
-          setShow(true);
+          setBusy(true);
+          try {
+            const result = await send<{ message: string }>(
+              "customer/tracking",
+              Object.fromEntries(new FormData(e.currentTarget)),
+            );
+            setMessage(result.message);
+            toast.success(result.message);
+          } catch (error) {
+            setMessage(notifyError(error));
+          } finally {
+            setBusy(false);
+          }
         }}
       >
         <label className="block text-sm font-semibold">
           Order reference
-          <input
-            className="commerce-input mt-1"
-            required
-            minLength={3}
-            maxLength={80}
-            value={reference}
-            placeholder="Enter your order reference"
-            onChange={(e) => {
-              setReference(e.target.value);
-              setShow(false);
-            }}
-          />
+          <input className="commerce-input mt-2" name="reference" required minLength={4} />
         </label>
-        <Button className="w-full" type="submit">
-          Check order
+        <label className="block text-sm font-semibold">
+          Checkout email
+          <input className="commerce-input mt-2" name="email" type="email" required />
+        </label>
+        <Button className="w-full" disabled={busy}>
+          {busy ? "Sending?" : "Email tracking link"}
         </Button>
       </form>
-      {show && (
-        <div role="status" className="space-y-3 rounded-xl bg-secondary p-4 text-sm leading-6">
-          <p>
-            Live tracking is not connected yet. Our team can check reference{" "}
-            <strong>{reference}</strong> for you.
-          </p>
-          <a
-            className="font-semibold underline"
-            href={whatsapp(`Hello ReliefPoint, please help me check order reference ${reference}.`)}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Ask about this order on WhatsApp
-          </a>
-        </div>
+      {message && (
+        <p role="status" className="rounded-lg bg-secondary p-3 text-sm">
+          {message}
+        </p>
       )}
     </>
   );

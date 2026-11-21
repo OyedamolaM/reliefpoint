@@ -50,7 +50,27 @@ export default {
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      const normalized = await normalizeCatastrophicSsrResponse(response);
+      const headers = new Headers(normalized.headers);
+      headers.set("X-Content-Type-Options", "nosniff");
+      headers.set("Referrer-Policy", "no-referrer");
+      headers.set("X-Frame-Options", "DENY");
+      headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+      const storageOrigin = process.env["SUPABASE_URL"]
+        ? new URL(process.env["SUPABASE_URL"]).origin
+        : "";
+      headers.set(
+        "Content-Security-Policy",
+        `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https: data: blob:; connect-src 'self' ${storageOrigin}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`,
+      );
+      if (!headers.has("Cache-Control")) headers.set("Cache-Control", "no-store");
+      if (process.env["APP_ORIGIN"]?.startsWith("https://"))
+        headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+      return new Response(normalized.body, {
+        status: normalized.status,
+        statusText: normalized.statusText,
+        headers,
+      });
     } catch (error) {
       console.error(error);
       return new Response(renderErrorPage(), {

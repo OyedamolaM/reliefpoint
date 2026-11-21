@@ -9,6 +9,23 @@ export function ProductVisual({
   product: Product;
   compact?: boolean;
 }) {
+  if (product.live)
+    return (
+      <img
+        src={product.image}
+        srcSet={
+          product.image.endsWith("-medium.webp")
+            ? `${product.image.replace("-medium.webp", "-small.webp")} 320w, ${product.image} 800w`
+            : undefined
+        }
+        sizes={compact ? "96px" : "(max-width: 640px) 45vw, 280px"}
+        alt={product.imageAlt ?? product.name}
+        loading="lazy"
+        width={compact ? 160 : 320}
+        height={compact ? 160 : 320}
+        className={`aspect-square w-full rounded-xl bg-white object-contain ${compact ? "max-h-24" : "max-h-72"}`}
+      />
+    );
   const device = product.category === "Medical Devices";
   const bottle = ["Vitamins", "Skincare", "Personal Care", "Mother & Child"].includes(
     product.category,

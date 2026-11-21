@@ -4,6 +4,9 @@
 @import "tw-animate-css";
 @import "./retail.css";
 
+.action-button { display: inline-flex; align-items: center; justify-content: center; border-radius: .65rem; background: #173FC5; color: white; padding: .7rem 1.1rem; font-weight: 600; font-size: .9rem; }
+.action-button:disabled { opacity: .55; cursor: wait; }
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

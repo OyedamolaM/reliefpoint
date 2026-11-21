@@ -13,13 +13,15 @@ https://github.com/OyedamolaM/reliefpoint.git.
 
 ## Architecture decisions
 
-- The storefront is frontend-only until the owner requests backend integrations.
+- The owner has requested Supabase Auth/Postgres/Storage, Paystack and Brevo integrations.
+- Backend code lives on `feat/reliefpoint-backend`; do not push or deploy without a separate instruction.
 - Keep catalog and cart as presentation data; do not claim live inventory, completed
   payments, created orders, authenticated accounts or earned loyalty points without
   the corresponding services.
 - Do not add repeated demo banners to the customer interface. Explain an unavailable
   service only at the point where it is needed.
-- Customer accounts, payments and prescription uploads are not connected. Do not
-  connect them without the owner's request.
+- Configuration-dependent services must remain honest when credentials are absent.
+- Follow `docs/BACKEND_SETUP.md` for migrations, permissions and production launch gates.
+- Keep customer-facing errors concise and actionable, using the global toast provider.
 - The business goal is to help customers in Nigeria access medicines and health
   products with convenient delivery.

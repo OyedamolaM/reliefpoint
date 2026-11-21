@@ -1,24 +1,27 @@
-﻿import { fireEvent, render, screen, cleanup } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { fireEvent, screen, cleanup, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { render } from "./render";
 import { CommerceProvider, useCommerce } from "@/components/commerce-provider";
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  localStorage.clear();
+});
 function Harness() {
   const shop = useCommerce();
-  return (
-    <>
-      <button onClick={() => shop.openPanel("account")}>Account</button>
-      <p data-testid="profile">{shop.profile?.name ?? "Guest"}</p>
-    </>
-  );
+  return <button onClick={() => shop.openPanel("account")}>Account</button>;
 }
-describe("account frontend", () => {
-  it("validates registration and does not pretend to create an online account", () => {
-    render(
-      <CommerceProvider>
-        <Harness />
-      </CommerceProvider>,
-    );
-    fireEvent.click(screen.getByText("Account"));
+function mount() {
+  render(
+    <CommerceProvider>
+      <Harness />
+    </CommerceProvider>,
+  );
+  fireEvent.click(screen.getByText("Account"));
+}
+describe("secure account forms", () => {
+  it("validates matching passwords before registration", () => {
+    mount();
     fireEvent.click(screen.getByText("Register"));
     fireEvent.change(screen.getByLabelText("Full name"), { target: { value: "Amina Test" } });
     fireEvent.change(screen.getByLabelText("Email address"), {
@@ -28,46 +31,47 @@ describe("account frontend", () => {
     fireEvent.change(screen.getByLabelText("Confirm password"), {
       target: { value: "different123" },
     });
-    fireEvent.click(screen.getByText("Create account"));
+    fireEvent.submit(screen.getByText("Create account").closest("form")!);
     expect(screen.getByRole("status")).toHaveTextContent("passwords do not match");
-    fireEvent.change(screen.getByLabelText("Confirm password"), {
-      target: { value: "password123" },
-    });
-    fireEvent.click(screen.getByText("Create account"));
-    expect(screen.getByRole("status")).toHaveTextContent("account has not been created");
-    expect(screen.getByLabelText("Password")).toHaveValue("");
-    expect(screen.getByTestId("profile")).toHaveTextContent("Guest");
   });
-  it("supports a session shopping profile without saving a password", () => {
-    render(
-      <CommerceProvider>
-        <Harness />
-      </CommerceProvider>,
+  it("preserves entered details and displays a friendly sign-in failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          Response.json(
+            { error: { code: "SIGN_IN_FAILED", message: "Check your email and password." } },
+            { status: 401 },
+          ),
+        ),
     );
-    fireEvent.click(screen.getByText("Account"));
-    fireEvent.click(screen.getByText("Use a shopping profile for this visit"));
-    fireEvent.change(screen.getByLabelText("Full name"), { target: { value: "Amina Test" } });
+    mount();
     fireEvent.change(screen.getByLabelText("Email address"), {
       target: { value: "amina@example.com" },
     });
-    fireEvent.click(screen.getByText("Use shopping profile"));
-    expect(screen.getByTestId("profile")).toHaveTextContent("Amina Test");
-    expect(screen.getByText(/Guest profile/)).toBeInTheDocument();
-    fireEvent.click(screen.getByText("Clear shopping profile"));
-    expect(screen.getByTestId("profile")).toHaveTextContent("Guest");
-  });
-  it("shows an honest password-reset state", () => {
-    render(
-      <CommerceProvider>
-        <Harness />
-      </CommerceProvider>,
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "password123" } });
+    fireEvent.submit(screen.getByRole("button", { name: /^Sign in$/ }).closest("form")!);
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent("Check your email and password."),
     );
-    fireEvent.click(screen.getByText("Account"));
+    expect(screen.getByLabelText("Email address")).toHaveValue("amina@example.com");
+    expect(localStorage.getItem("supabase.auth.token")).toBeNull();
+  });
+  it("uses an account-safe password recovery message", async () => {
+    const message = "If an account matches this email, you?ll receive a password reset link.";
+    const fetch = vi.fn().mockResolvedValue(Response.json({ message }));
+    vi.stubGlobal("fetch", fetch);
+    mount();
     fireEvent.click(screen.getByText("Forgot password?"));
     fireEvent.change(screen.getByLabelText("Email address"), {
       target: { value: "amina@example.com" },
     });
-    fireEvent.click(screen.getByText("Send reset link"));
-    expect(screen.getByRole("status")).toHaveTextContent("No email has been sent");
+    fireEvent.submit(screen.getByText("Send reset link").closest("form")!);
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(message));
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/auth/reset",
+      expect.objectContaining({ credentials: "same-origin" }),
+    );
   });
 });

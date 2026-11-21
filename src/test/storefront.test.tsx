@@ -1,4 +1,5 @@
-﻿import { fireEvent, render, screen, cleanup, within } from "@testing-library/react";
+import { render } from "./render";
+import { fireEvent, screen, cleanup, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CommerceProvider } from "@/components/commerce-provider";
 import { PharmacyStorefront } from "@/components/pharmacy-storefront";

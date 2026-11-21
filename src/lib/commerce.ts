@@ -16,10 +16,15 @@ export const categories = [
 ] as const;
 export type Category = (typeof categories)[number];
 export type Product = {
+  slug?: string;
+  imageAlt?: string;
+  directions?: string;
+  storage?: string;
+  live?: boolean;
   id: string;
   name: string;
   detail: string;
-  category: Category;
+  category: string;
   price: number;
   image: string;
   inStock: boolean;
@@ -167,7 +172,8 @@ export const formatNaira = (amount: number) =>
   new Intl.NumberFormat("en-NG", {
     style: "currency",
     currency: "NGN",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(amount);
 export const whatsapp = (
   message = "Hello ReliefPoint, I'd like to check medication availability for...",
@@ -352,7 +358,7 @@ products.push(
 );
 export const CART_STORAGE_KEY = "reliefpoint.basket.v1";
 export const WISHLIST_STORAGE_KEY = "reliefpoint.wishlist.v1";
-export function restoreCart(raw: string | null): CartItem[] {
+export function restoreCart(raw: string | null, catalog: Product[] = products): CartItem[] {
   try {
     const data: unknown = JSON.parse(raw ?? "[]");
     if (!Array.isArray(data)) return [];
@@ -360,7 +366,7 @@ export function restoreCart(raw: string | null): CartItem[] {
     return data.flatMap((entry: unknown) => {
       if (!entry || typeof entry !== "object" || !("id" in entry) || !("quantity" in entry))
         return [];
-      const product = products.find((p) => p.id === entry.id);
+      const product = catalog.find((p) => p.id === entry.id);
       if (
         !product ||
         !product.inStock ||
@@ -377,14 +383,14 @@ export function restoreCart(raw: string | null): CartItem[] {
     return [];
   }
 }
-export function restoreWishlist(raw: string | null): string[] {
+export function restoreWishlist(raw: string | null, catalog: Product[] = products): string[] {
   try {
     const data: unknown = JSON.parse(raw ?? "[]");
     return Array.isArray(data)
       ? [
           ...new Set(
             data.filter(
-              (id): id is string => typeof id === "string" && products.some((p) => p.id === id),
+              (id): id is string => typeof id === "string" && catalog.some((p) => p.id === id),
             ),
           ),
         ]
