@@ -205,7 +205,7 @@ export async function handleApi(request: Request) {
         checkDb(
           await ctx.db.from("notification_outbox").insert({
             dedupe: `contact:${message.id}`,
-            email: "support@myreliefpoint.com",
+            email: "support@reliefpointpharmacy.com",
             subject: "New website enquiry — ReliefPoint Pharmacy",
             body: "A new customer enquiry is available in your administration inbox.",
           }),

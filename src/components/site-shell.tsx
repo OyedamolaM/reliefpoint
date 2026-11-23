@@ -42,7 +42,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
           )}
           {shop.settings.address && <p>{shop.settings.address}</p>}
           <p className="text-sm">Pharm Chisom Onyejegbu · Pharmacist registration number 027390</p>
-          <a href="mailto:support@myreliefpoint.com">support@myreliefpoint.com</a>
+          <a href="mailto:support@reliefpointpharmacy.com">support@reliefpointpharmacy.com</a>
         </div>
       </footer>
     </div>

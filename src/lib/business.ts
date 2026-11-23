@@ -11,8 +11,8 @@ Essential cookies keep you signed in and protect checkout. Your browser may also
 
 We restrict access to customer records and retain information according to applicable obligations and our approved retention schedule. Prescription files are kept separately from public product photos. You can request access, correction or deletion, subject to identity checks and applicable recordkeeping requirements.
 
-For privacy requests, contact support@myreliefpoint.com or +234 706 784 1607.`,
-  refund_text: `If an item is incorrect, damaged, defective or unsuitable for supply after pharmacist review, contact support@myreliefpoint.com or +234 706 784 1607 with your order reference. Keep the product and packaging available for assessment.
+For privacy requests, contact support@reliefpointpharmacy.com or +234 706 784 1607.`,
+  refund_text: `If an item is incorrect, damaged, defective or unsuitable for supply after pharmacist review, contact support@reliefpointpharmacy.com or +234 706 784 1607 with your order reference. Keep the product and packaging available for assessment.
 
 Prescription orders require pharmacist approval before dispatch. If a prescription cannot be approved or an item cannot be supplied, our team will contact you about the available resolution. Substitutions require your consent.
 
@@ -27,5 +27,5 @@ Provide your full name, reachable phone number, email and complete street addres
 
 Orders are prepared after payment confirmation. Prescription medicines also require pharmacist approval. Delivery estimates are not emergency-service guarantees. Our team will contact you if prescription review, stock availability or delivery conditions affect your order.
 
-You can view delivery updates in your account or request a secure guest-tracking link using your checkout email and order reference. Contact support@myreliefpoint.com or +234 706 784 1607 to report delivery issues or request an address change before dispatch.`,
+You can view delivery updates in your account or request a secure guest-tracking link using your checkout email and order reference. Contact support@reliefpointpharmacy.com or +234 706 784 1607 to report delivery issues or request an address change before dispatch.`,
 };

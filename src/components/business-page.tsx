@@ -52,8 +52,8 @@ export function BusinessPage({ kind, settings }: { kind: string; settings: Publi
           <div className="grid gap-8 sm:grid-cols-2">
             <div className="space-y-5">
               <p className="font-bold">Relief Point Pharmacy</p>
-              <a className="block underline" href="mailto:support@myreliefpoint.com">
-                support@myreliefpoint.com
+              <a className="block underline" href="mailto:support@reliefpointpharmacy.com">
+                support@reliefpointpharmacy.com
               </a>
               <a className="block underline" href="tel:+2347067841607">
                 +234 706 784 1607
@@ -111,8 +111,8 @@ export function BusinessPage({ kind, settings }: { kind: string; settings: Publi
               This policy is being finalised. Please contact our team for the current terms before
               placing an order.
             </p>
-            <a className="underline" href="mailto:support@myreliefpoint.com">
-              support@myreliefpoint.com
+            <a className="underline" href="mailto:support@reliefpointpharmacy.com">
+              support@reliefpointpharmacy.com
             </a>
           </div>
         )}
