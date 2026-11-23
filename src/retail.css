@@ -4,7 +4,7 @@
   font-size: 1rem;
 }
 .retail-container {
-  width: min(1320px, calc(100% - 64px));
+  width: min(1320px, calc(100% - 112px));
   margin-inline: auto;
 }
 .retail-store button {
@@ -1416,7 +1416,7 @@
 }
 @media (max-width: 900px) {
   .retail-container {
-    width: calc(100% - 40px);
+    width: calc(100% - 64px);
   }
   .benefit-strip span:nth-child(3),
   .benefit-strip a {
@@ -1508,7 +1508,7 @@
 }
 @media (max-width: 640px) {
   .retail-container {
-    width: calc(100% - 28px);
+    width: calc(100% - 40px);
   }
   .benefit-strip .retail-container {
     min-height: 32px;

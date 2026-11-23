@@ -19,6 +19,7 @@ import { Route as MarketplaceRouteImport } from './routes/marketplace'
 import { Route as PrivacyPolicyRouteImport } from './routes/privacy-policy'
 import { Route as RefundPolicyRouteImport } from './routes/refund-policy'
 import { Route as ShippingPolicyRouteImport } from './routes/shipping-policy'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as ApiSplatRouteImport } from './routes/api.$'
 import { Route as HealthTipsIndexRouteImport } from './routes/health-tips.index'
 import { Route as HealthTipsSlugRouteImport } from './routes/health-tips.$slug'
@@ -76,6 +77,11 @@ const ShippingPolicyRoute = ShippingPolicyRouteImport.update({
   path: '/shipping-policy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSplatRoute = ApiSplatRouteImport.update({
   id: '/api/$',
   path: '/api/$',
@@ -118,6 +124,7 @@ export interface FileRoutesByFullPath {
   '/privacy-policy': typeof PrivacyPolicyRoute
   '/refund-policy': typeof RefundPolicyRoute
   '/shipping-policy': typeof ShippingPolicyRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/api/$': typeof ApiSplatRoute
   '/health-tips/$slug': typeof HealthTipsSlugRoute
   '/orders/$id': typeof OrdersIdRoute
@@ -136,6 +143,7 @@ export interface FileRoutesByTo {
   '/privacy-policy': typeof PrivacyPolicyRoute
   '/refund-policy': typeof RefundPolicyRoute
   '/shipping-policy': typeof ShippingPolicyRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/api/$': typeof ApiSplatRoute
   '/health-tips/$slug': typeof HealthTipsSlugRoute
   '/orders/$id': typeof OrdersIdRoute
@@ -155,6 +163,7 @@ export interface FileRoutesById {
   '/privacy-policy': typeof PrivacyPolicyRoute
   '/refund-policy': typeof RefundPolicyRoute
   '/shipping-policy': typeof ShippingPolicyRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/api/$': typeof ApiSplatRoute
   '/health-tips/$slug': typeof HealthTipsSlugRoute
   '/orders/$id': typeof OrdersIdRoute
@@ -175,6 +184,7 @@ export interface FileRouteTypes {
     | '/privacy-policy'
     | '/refund-policy'
     | '/shipping-policy'
+    | '/sitemap.xml'
     | '/api/$'
     | '/health-tips/$slug'
     | '/orders/$id'
@@ -193,6 +203,7 @@ export interface FileRouteTypes {
     | '/privacy-policy'
     | '/refund-policy'
     | '/shipping-policy'
+    | '/sitemap.xml'
     | '/api/$'
     | '/health-tips/$slug'
     | '/orders/$id'
@@ -211,6 +222,7 @@ export interface FileRouteTypes {
     | '/privacy-policy'
     | '/refund-policy'
     | '/shipping-policy'
+    | '/sitemap.xml'
     | '/api/$'
     | '/health-tips/$slug'
     | '/orders/$id'
@@ -230,6 +242,7 @@ export interface RootRouteChildren {
   PrivacyPolicyRoute: typeof PrivacyPolicyRoute
   RefundPolicyRoute: typeof RefundPolicyRoute
   ShippingPolicyRoute: typeof ShippingPolicyRoute
+  SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   ApiSplatRoute: typeof ApiSplatRoute
   HealthTipsSlugRoute: typeof HealthTipsSlugRoute
   OrdersIdRoute: typeof OrdersIdRoute
@@ -310,6 +323,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShippingPolicyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/$': {
       id: '/api/$'
       path: '/api/$'
@@ -366,6 +386,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyPolicyRoute: PrivacyPolicyRoute,
   RefundPolicyRoute: RefundPolicyRoute,
   ShippingPolicyRoute: ShippingPolicyRoute,
+  SitemapDotxmlRoute: SitemapDotxmlRoute,
   ApiSplatRoute: ApiSplatRoute,
   HealthTipsSlugRoute: HealthTipsSlugRoute,
   OrdersIdRoute: OrdersIdRoute,

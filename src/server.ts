@@ -52,6 +52,12 @@ export default {
       const response = await handler.fetch(request, env, ctx);
       const normalized = await normalizeCatastrophicSsrResponse(response);
       const headers = new Headers(normalized.headers);
+      if (
+        /^\/(?:admin|account|orders|api)(?:\/|$)/.test(new URL(request.url).pathname) ||
+        new URL(request.url).pathname.startsWith("/health-tips/preview/") ||
+        process.env["VERCEL_ENV"] === "preview"
+      )
+        headers.set("X-Robots-Tag", "noindex, nofollow");
       headers.set("X-Content-Type-Options", "nosniff");
       headers.set("Referrer-Policy", "no-referrer");
       headers.set("X-Frame-Options", "DENY");

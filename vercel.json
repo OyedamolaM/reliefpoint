@@ -1,5 +1,19 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "tanstack-start",
-  "buildCommand": "bun run build"
+  "buildCommand": "bun run build",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "reliefpointpharmacy.com.ng" }],
+      "destination": "https://www.reliefpointpharmacy.com/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "www.reliefpointpharmacy.com.ng" }],
+      "destination": "https://www.reliefpointpharmacy.com/:path*",
+      "permanent": true
+    }
+  ]
 }

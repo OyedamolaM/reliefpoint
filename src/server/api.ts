@@ -14,7 +14,7 @@ import {
   webhook,
 } from "./payments";
 import { customerAction, customerData, orderDetails } from "./customer";
-import { adminAction, adminList, adminWrite, adminRecord } from "./admin";
+import { adminAction, adminList, adminWrite, adminRecord, adminDashboard } from "./admin";
 import { uploadTicket, finalizeUpload } from "./uploads";
 import { runWorker } from "./worker";
 import { readBody } from "./body";
@@ -126,8 +126,7 @@ export async function handleApi(request: Request) {
           post: requireDb(await ctx.db.from("blog_posts").select("*").eq("id", id).single()),
         };
       } else if (path === "admin/summary" && method === "GET") {
-        await requireStaff(ctx, ["owner", "admin"]);
-        result = requireDb(await ctx.db.rpc("admin_summary"));
+        result = await adminDashboard(ctx);
       } else if (path === "admin/record" && method === "GET") {
         result = await adminRecord(
           ctx,

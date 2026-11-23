@@ -79,7 +79,10 @@ export function OrderView({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="break-all text-2xl font-bold">Order {order.reference}</h1>
+        <h1 className="break-all text-2xl font-bold">
+          {["pending", "review"].includes(order.payment_status) ? "Payment" : "Order"}{" "}
+          {order.reference}
+        </h1>
         <p className="mt-2 text-sm">{new Date(order.created_at).toLocaleString("en-NG")}</p>
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
@@ -96,9 +99,7 @@ export function OrderView({
       </div>
       {order.payment_status === "pending" && (
         <div className="rounded-xl border p-4">
-          <p>
-            We haven’t confirmed a payment for this order yet. Check its status before paying again.
-          </p>
+          <p>We haven’t confirmed this payment yet. Check its status before paying again.</p>
           {["failed", "abandoned", "reversed"].includes(payment?.provider_status) && (
             <p className="mt-3 text-sm">
               The last payment attempt wasn’t completed. No successful payment has been confirmed.

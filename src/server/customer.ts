@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { verifiedPaymentStatuses, unverifiedPaymentStatuses } from "@/lib/order-groups";
 import { randomBytes } from "node:crypto";
 import { AppError, checkDb, requireDb } from "./errors";
 import { identity, rate, type Context } from "./session";
@@ -179,6 +180,10 @@ export async function customerData(ctx: Context, kind: string, params: URLSearch
           "id,reference,payment_status,fulfillment_status,prescription_status,total,created_at",
         )
         .eq("user_id", user.id)
+        .in(
+          "payment_status",
+          params.get("view") === "pending" ? unverifiedPaymentStatuses : verifiedPaymentStatuses,
+        )
         .order("created_at", { ascending: false })
         .range(page * 24, page * 24 + 24),
     );

@@ -17,6 +17,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { loadStorefront } from "@/lib/public-data";
 import { toast } from "sonner";
 import { GlobalNotifications } from "@/components/global-notifications";
+import { canonicalUrl } from "@/lib/seo";
 
 function NotFoundComponent() {
   return (
@@ -79,7 +80,7 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   loader: () => loadStorefront(),
-  head: () => ({
+  head: ({ matches }) => ({
     // Each content route defines its own social preview through pageMeta.
     meta: [
       { charSet: "utf-8" },
@@ -103,6 +104,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
+      { rel: "canonical", href: canonicalUrl(matches.at(-1)?.pathname ?? "/") },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {

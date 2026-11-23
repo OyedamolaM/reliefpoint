@@ -17,6 +17,8 @@ The app is ready for frontend preview without credentials. It does not fabricate
 
 ## Operations
 
+For the one-time Vault and Cron setup, follow [WORKER_SETUP.md](WORKER_SETUP.md) and run `supabase/operations/schedule-worker.sql`. This operational script is separate from schema migrations and does not enable checkout.
+
 - `/account`: profile, saved addresses, orders/prescriptions, password and MFA settings. Guest tracking requires matching reference/email and an expiring email link. Verified customers can claim matching-email guest orders.
 - `/admin`: products, categories, stock, delivery zones, orders, prescriptions, refunds, inbox, Health Tips, staff access, settings, provider events and audit history. Staff must complete MFA for every protected administrative endpoint.
 - Upload JPEG/PNG product and article photos from the device. They go directly into private quarantine through scoped upload tickets, then the server validates them and creates stripped, compressed WebP variants. This supports the advertised file sizes without routing large browser requests through Vercel. Prescriptions accept PDF/JPEG/PNG (5 MB) in a separate private bucket; authorised downloads are audited and expire after 60 seconds. The public media bucket must **never** contain patient documents.

@@ -4,6 +4,7 @@ import { AppError, checkDb, requireDb } from "./errors";
 import { audit, requireStaff, type Context } from "./session";
 import { assertMedia } from "./uploads";
 import { invalidatePublic } from "./public-cache";
+import { verifiedPaymentStatuses, unverifiedPaymentStatuses } from "@/lib/order-groups";
 
 const permissions: Record<string, StaffRole[]> = {
   products: ["owner", "admin", "pharmacist"],
@@ -24,6 +25,29 @@ const permissions: Record<string, StaffRole[]> = {
   notification_outbox: ["owner", "admin"],
   webhook_events: ["owner", "admin"],
 };
+export async function adminDashboard(ctx: Context) {
+  await requireStaff(ctx, ["owner", "admin"]);
+  const [base, confirmed, pending] = await Promise.all([
+    ctx.db.rpc("admin_summary"),
+    ctx.db
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .in("payment_status", verifiedPaymentStatuses),
+    ctx.db
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .in("payment_status", unverifiedPaymentStatuses),
+  ]);
+  const summary = requireDb(base);
+  checkDb(confirmed);
+  checkDb(pending);
+  return {
+    paid_kobo: summary.paid_kobo,
+    confirmed_orders: confirmed.count ?? 0,
+    pending_payments: pending.count ?? 0,
+    prescription_queue: summary.prescription_queue,
+  };
+}
 export async function adminList(ctx: Context, resource: string, params: URLSearchParams) {
   if (!permissions[resource])
     throw new AppError("NOT_FOUND", "This section couldn’t be found.", 404);
@@ -38,12 +62,20 @@ export async function adminList(ctx: Context, resource: string, params: URLSearc
     resource === "blog_posts"
       ? "id,title,slug,summary,category,cover,status,author_name,reviewer_id,reviewed_at,published_at,updated_at"
       : resource === "products" && params.get("export") !== "1"
-        ? "id,name,slug,category,brand,price_kobo,image,active,prescription,deal,updated_at"
+        ? "id,name,slug,category,brand,price_kobo,image,active,prescription,deal,updated_at,available"
         : resource === "notification_outbox"
           ? "id,email,subject,status,attempts,next_attempt,created_at"
           : "*";
-  let query = ctx.db.from(resource).select(projection);
-  if (resource === "orders") query = query.order("created_at", { ascending: false });
+  let query = ctx.db
+    .from(resource === "products" && params.get("export") !== "1" ? "catalog" : resource)
+    .select(projection);
+  if (resource === "orders")
+    query = query
+      .in(
+        "payment_status",
+        params.get("view") === "pending" ? unverifiedPaymentStatuses : verifiedPaymentStatuses,
+      )
+      .order("created_at", { ascending: false });
   else if (resource === "blog_posts") query = query.order("updated_at", { ascending: false });
   else if (resource !== "settings" && resource !== "staff_roles") query = query.order("id");
   if (params.get("q")) {
@@ -56,7 +88,9 @@ export async function adminList(ctx: Context, resource: string, params: URLSearc
     if (resource === "blog_posts") query = query.ilike("title", `%${term}%`);
     if (resource === "orders") query = query.ilike("reference", `%${term}%`);
   }
-  const rows = requireDb(await query.range(page * 24, page * 24 + 24).returns<Record<string,unknown>[]>());
+  const rows = requireDb(
+    await query.range(page * 24, page * 24 + 24).returns<Record<string, unknown>[]>(),
+  );
   // File paths are accessed only through the audited prescription-view endpoint.
   return {
     rows: rows
@@ -189,12 +223,22 @@ export async function adminWrite(ctx: Context, resource: string, body: unknown) 
     const input = z
       .object({
         product_id: z.string().uuid(),
-        lot: z.string().min(1).max(80),
-        expires_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        lot: z
+          .string()
+          .min(1)
+          .max(80)
+          .default(() => `STOCK-${crypto.randomUUID()}`),
+        // PostgreSQL infinity means expiry is not tracked, not a fabricated date.
+        expires_on: z
+          .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal("infinity")])
+          .default("infinity"),
         quantity: z.number().int().min(0).max(100000),
       })
       .parse(body);
-    if (input.expires_on <= new Date().toISOString().slice(0, 10))
+    if (
+      input.expires_on !== "infinity" &&
+      input.expires_on <= new Date().toISOString().slice(0, 10)
+    )
       throw new AppError("EXPIRY_INVALID", "Choose a future expiry date.");
     id = requireDb(await db.from(resource).insert(input).select("id").single()).id;
     checkDb(

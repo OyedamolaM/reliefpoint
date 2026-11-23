@@ -1,12 +1,11 @@
-import { createIsomorphicFn } from "@tanstack/react-start";
-import { getRequestUrl } from "@tanstack/react-start/server";
-
-const siteOrigin = createIsomorphicFn()
-  .server(() => getRequestUrl().origin)
-  .client(() => window.location.origin);
+export const SITE_ORIGIN = "https://www.reliefpointpharmacy.com";
+export function canonicalUrl(pathname: string) {
+  const url = new URL(pathname, SITE_ORIGIN);
+  return `${SITE_ORIGIN}${url.pathname === "/" ? "/" : url.pathname.replace(/\/+$/, "")}`;
+}
 
 export function pageMeta(title: string, description: string, pathname: string, imagePath?: string) {
-  const origin = siteOrigin();
+  const origin = SITE_ORIGIN;
   const image = new URL(imagePath ?? "/reliefpoint-social-v2.png", origin).href;
   return [
     { title },
@@ -16,7 +15,7 @@ export function pageMeta(title: string, description: string, pathname: string, i
     { property: "og:type", content: "website" },
     { property: "og:site_name", content: "ReliefPoint Pharmacy" },
     { property: "og:locale", content: "en_NG" },
-    { property: "og:url", content: new URL(pathname, origin).href },
+    { property: "og:url", content: canonicalUrl(pathname) },
     { property: "og:image", content: image },
     ...(!imagePath
       ? [

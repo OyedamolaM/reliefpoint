@@ -6,6 +6,20 @@ import { useAccount } from "./auth-provider";
 import { SiteShell } from "./site-shell";
 import { api, send, notifyError } from "@/lib/api";
 import { formatNaira } from "@/lib/commerce";
+import {
+  LayoutDashboard,
+  ShoppingBag,
+  CreditCard,
+  UserRound,
+  MapPin,
+  ShieldCheck,
+  Heart,
+  Plus,
+  ArrowUpRight,
+  Pencil,
+} from "lucide-react";
+import { WorkspaceShell, WorkspaceModal, EmptyWorkspace } from "./workspace-shell";
+import { useCommerce } from "./commerce-provider";
 
 export function AuthForm() {
   const account = useAccount();
@@ -146,23 +160,38 @@ export function Field({
     </label>
   );
 }
+const accountNavigation = [
+  { key: "overview", label: "Overview", icon: LayoutDashboard },
+  { key: "orders", label: "My orders", icon: ShoppingBag },
+  { key: "payments", label: "Pending payments", icon: CreditCard },
+  { key: "profile", label: "My profile", icon: UserRound },
+  { key: "addresses", label: "Saved addresses", icon: MapPin },
+  { key: "wishlist", label: "Wishlist", icon: Heart },
+  { key: "security", label: "Security", icon: ShieldCheck },
+];
 export function AccountPage() {
   useEffect(() => {
     if (new URLSearchParams(window.location.search).has("auth_error"))
       toast.error(
-        "This sign-in link has expired or couldn’t be verified. Please request a new one.",
+        "This sign-in link has expired or couldn?t be verified. Please request a new one.",
         { id: "auth-link" },
       );
   }, []);
   const account = useAccount();
   const query = useQueryClient();
-  const [selectedTab, setTab] = useState("orders");
-  const tab = account.user?.recovery ? "security" : selectedTab;
+  const shop = useCommerce();
+  const [selectedTab, setTab] = useState("overview");
   const [page, setPage] = useState(0);
+  const [editProfile, setEditProfile] = useState(false);
+  const [addAddress, setAddAddress] = useState(false);
+  const tab = account.user?.recovery ? "security" : selectedTab;
   const orders = useQuery({
-    queryKey: ["private", "orders", account.user?.id, page],
-    queryFn: () => api<{ rows: any[]; more: boolean }>(`customer/orders?page=${page}`),
-    enabled: !!account.user && tab === "orders",
+    queryKey: ["private", "orders", account.user?.id, page, tab === "payments"],
+    queryFn: () =>
+      api<{ rows: any[]; more: boolean }>(
+        "customer/orders?page=" + page + (tab === "payments" ? "&view=pending" : ""),
+      ),
+    enabled: !!account.user && ["overview", "orders", "payments"].includes(tab),
     retry: false,
   });
   const addresses = useQuery({
@@ -171,173 +200,341 @@ export function AccountPage() {
     enabled: !!account.user && tab === "addresses",
     retry: false,
   });
+  if (account.loading || !account.user)
+    return (
+      <SiteShell>
+        <div className="mx-auto max-w-lg rounded-2xl border bg-white p-6 sm:p-9">
+          {account.loading ? <p>Loading your account?</p> : <AuthForm />}
+        </div>
+      </SiteShell>
+    );
+  const user = account.user;
+  const navigate = (key: string) => {
+    setTab(key);
+    setPage(0);
+  };
+  const title = accountNavigation.find((n) => n.key === tab)?.label || "My account";
   return (
-    <SiteShell>
-      {account.loading ? (
-        <p>Loading your account…</p>
-      ) : !account.user ? (
-        <AuthForm />
-      ) : (
-        <div>
-          <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-            <h1 className="text-3xl font-bold">Hello, {account.user.name || "there"}</h1>
-            <button
-              className="underline"
-              onClick={() =>
-                void account
-                  .logout()
-                  .then(() => toast.success("You’ve been signed out."))
-                  .catch(notifyError)
-              }
+    <WorkspaceShell
+      items={accountNavigation}
+      active={tab}
+      onNavigate={navigate}
+      title={title}
+      subtitle={
+        tab === "overview" ? "Your care, orders and account details, all in one place." : undefined
+      }
+    >
+      {tab === "overview" && (
+        <>
+          <section className="mb-7 flex flex-wrap items-center justify-between gap-6 rounded-2xl bg-brand p-7 text-white sm:p-9">
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-blue-200">
+                My ReliefPoint
+              </p>
+              <h2 className="text-2xl font-bold sm:text-3xl">
+                Hello, {user.name.split(" ")[0] || "there"}.
+              </h2>
+              <p className="mt-3 text-sm text-blue-100">
+                A little more care for you and your family.
+              </p>
+            </div>
+            <Link
+              to="/"
+              className="flex items-center gap-2 rounded-xl bg-[#B9FF00] px-5 py-3 text-sm font-bold text-brand"
             >
-              Sign out
-            </button>
-          </div>
-          <nav className="mb-8 flex flex-wrap gap-3">
-            {["orders", "profile", "addresses", "security"].map((t) => (
+              Continue shopping
+              <ArrowUpRight size={16} />
+            </Link>
+          </section>
+          <div className="mb-8 grid gap-4 sm:grid-cols-3">
+            {[
+              {
+                key: "orders",
+                title: "Track your orders",
+                text: "Follow confirmed purchases and deliveries.",
+                icon: ShoppingBag,
+              },
+              {
+                key: "addresses",
+                title: "Delivery addresses",
+                text: "Keep your favourite delivery details handy.",
+                icon: MapPin,
+              },
+              {
+                key: "profile",
+                title: "Your profile",
+                text: "Manage your name and contact details.",
+                icon: UserRound,
+              },
+            ].map(({ key, title, text, icon: Icon }) => (
               <button
-                key={t}
-                className={tab === t ? "action-button" : "rounded-lg border px-4 py-2 capitalize"}
-                onClick={() => setTab(t)}
+                key={key}
+                onClick={() => navigate(key)}
+                className="rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-sm hover:border-brand/30"
               >
-                {t}
+                <Icon size={24} className="mb-5 text-brand" />
+                <h3 className="font-bold">{title}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-500">{text}</p>
               </button>
             ))}
-            {account.user.roles.length > 0 && (
-              <Link to="/admin" className="action-button">
-                Administration
-              </Link>
+          </div>
+        </>
+      )}
+      {["overview", "orders", "payments"].includes(tab) && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold">
+                {tab === "overview"
+                  ? "Recent orders"
+                  : tab === "payments"
+                    ? "Pending payments"
+                    : "Your orders"}
+              </h2>
+              {tab === "payments" && (
+                <p className="mt-1 text-sm text-slate-500">
+                  We?ll show your purchase in Orders after payment is confirmed.
+                </p>
+              )}
+            </div>
+            {tab === "overview" ? (
+              <button
+                className="text-sm font-semibold text-brand"
+                onClick={() => navigate("orders")}
+              >
+                View all
+              </button>
+            ) : (
+              <button
+                className="text-sm font-semibold text-brand"
+                onClick={() =>
+                  void send("customer/claim-orders", {})
+                    .then(() => {
+                      toast.success("Your verified guest purchases are linked.");
+                      void orders.refetch();
+                    })
+                    .catch(notifyError)
+                }
+              >
+                Find guest purchases
+              </button>
             )}
-          </nav>
-          {tab === "orders" && (
-            <section>
-              <div className="mb-5 flex flex-wrap justify-between gap-3">
-                <h2 className="text-xl font-bold">Orders & prescriptions</h2>
+          </div>
+          {orders.error && <Retry error={orders.error} retry={() => void orders.refetch()} />}
+          {orders.isLoading && (
+            <p role="status" className="py-8 text-center text-sm text-slate-500">
+              Loading purchases?
+            </p>
+          )}
+          <div className="space-y-3">
+            {orders.data?.rows.slice(0, tab === "overview" ? 4 : 24).map((o) => (
+              <Link
+                key={o.id}
+                to="/orders/$id"
+                params={{ id: o.id }}
+                className="flex flex-wrap items-center gap-4 rounded-xl border border-slate-100 p-4 transition hover:border-brand/30"
+              >
+                <span className="rounded-xl bg-blue-50 p-3 text-brand">
+                  <ShoppingBag size={21} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="break-all text-sm font-semibold">{o.reference}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {new Date(o.created_at).toLocaleDateString("en-NG")}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <strong className="text-sm">{formatNaira(o.total / 100)}</strong>
+                  <p className="mt-2 text-xs capitalize text-slate-500">
+                    {(tab === "payments" ? o.payment_status : o.fulfillment_status).replaceAll(
+                      "_",
+                      " ",
+                    )}
+                  </p>
+                </div>
+                <ArrowUpRight size={17} className="text-slate-400" />
+              </Link>
+            ))}
+          </div>
+          {orders.data?.rows.length === 0 && (
+            <EmptyWorkspace
+              title={tab === "payments" ? "No pending payments" : "Your first order starts here"}
+              description={
+                tab === "payments"
+                  ? "Payment updates will appear here when needed."
+                  : "Confirmed purchases and delivery updates will appear here."
+              }
+            />
+          )}
+          {tab !== "overview" && (
+            <Pagination page={page} more={orders.data?.more ?? false} onChange={setPage} />
+          )}
+        </section>
+      )}
+      {tab === "profile" && (
+        <section className="max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <div className="mb-8 flex items-center gap-4">
+            <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-2xl font-bold text-brand">
+              {(user.name || user.email).slice(0, 1).toUpperCase()}
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-lg font-bold">{user.name || "My profile"}</h2>
+              <p className="mt-1 break-all text-sm text-slate-500">{user.email}</p>
+            </div>
+            <button
+              className="rounded-lg border p-2.5 text-brand"
+              aria-label="Edit profile"
+              onClick={() => setEditProfile(true)}
+            >
+              <Pencil size={18} />
+            </button>
+          </div>
+          <dl className="grid gap-6 sm:grid-cols-2">
+            {[
+              { label: "Full name", value: user.name },
+              { label: "Phone number", value: user.phone },
+              { label: "Email address", value: user.email },
+            ].map((item) => (
+              <div key={item.label}>
+                <dt className="text-xs text-slate-500">{item.label}</dt>
+                <dd className="mt-2 break-words text-sm font-semibold">
+                  {item.value || "Not added"}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <button className="action-button mt-8" onClick={() => setEditProfile(true)}>
+            Edit profile
+          </button>
+        </section>
+      )}
+      {tab === "addresses" && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+          <div className="mb-6 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-bold">Saved addresses</h2>
+            <button className="action-button gap-2" onClick={() => setAddAddress(true)}>
+              <Plus size={16} />
+              Add address
+            </button>
+          </div>
+          {addresses.error && (
+            <Retry error={addresses.error} retry={() => void addresses.refetch()} />
+          )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            {addresses.data?.rows.map((a) => (
+              <article key={a.id} className="rounded-xl border border-slate-200 p-5">
+                <MapPin size={21} className="mb-4 text-brand" />
+                <h3 className="font-bold">{a.name}</h3>
+                <p className="mt-3 text-sm leading-6 text-slate-500">
+                  {a.address}
+                  <br />
+                  {a.lga}, {a.state}
+                  <br />
+                  {a.phone}
+                </p>
                 <button
-                  className="underline"
+                  className="mt-4 text-xs font-semibold text-red-600"
                   onClick={() =>
-                    void send("customer/claim-orders", {})
+                    void send("customer/delete-address", { id: a.id })
                       .then(() => {
-                        toast.success("Your verified guest purchases are linked.");
-                        void orders.refetch();
+                        void query.invalidateQueries({ queryKey: ["private", "addresses"] });
+                        toast.success("Address removed.");
                       })
                       .catch(notifyError)
                   }
                 >
-                  Find my guest purchases
+                  Remove address
                 </button>
-              </div>
-              {orders.error && <Retry error={orders.error} retry={() => void orders.refetch()} />}
-              <div className="space-y-3">
-                {orders.data?.rows.map((o) => (
-                  <Link
-                    key={o.id}
-                    to="/orders/$id"
-                    params={{ id: o.id }}
-                    className="block rounded-xl border p-5"
-                  >
-                    <div className="flex flex-wrap justify-between gap-3">
-                      <strong>{o.reference}</strong>
-                      <span>{formatNaira(o.total / 100)}</span>
-                    </div>
-                    <p className="mt-3 text-sm capitalize">
-                      {o.payment_status.replaceAll("_", " ")} ·{" "}
-                      {o.fulfillment_status.replaceAll("_", " ")}
-                    </p>
-                    <p className="mt-1 text-xs">
-                      {new Date(o.created_at).toLocaleDateString("en-NG")}
-                    </p>
-                  </Link>
-                ))}
-              </div>
-              {orders.data?.rows.length === 0 && <p>You have no orders yet.</p>}
-              <Pagination page={page} more={orders.data?.more ?? false} onChange={setPage} />
-            </section>
+              </article>
+            ))}
+          </div>
+          {addresses.data?.rows.length === 0 && (
+            <EmptyWorkspace
+              title="No saved addresses"
+              description="Add an address for a quicker checkout next time."
+            />
           )}
-          {tab === "profile" && (
-            <form
-              className="max-w-lg space-y-4"
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const d = new FormData(e.currentTarget);
-                try {
-                  await send("customer/profile", Object.fromEntries(d));
-                  await account.refresh();
-                  toast.success("Your profile has been updated.");
-                } catch (error) {
-                  notifyError(error);
-                }
-              }}
-            >
-              <Field name="name" label="Full name" defaultValue={account.user.name} required />
-              <Field label="Email" value={account.user.email} readOnly />
-              <Field name="phone" label="Phone" defaultValue={account.user.phone} />
-              <button className="action-button">Save profile</button>
-            </form>
-          )}
-          {tab === "addresses" && (
-            <section className="grid gap-8 md:grid-cols-2">
-              <div>
-                {addresses.error && (
-                  <Retry error={addresses.error} retry={() => void addresses.refetch()} />
-                )}
-                <div className="space-y-3">
-                  {addresses.data?.rows.map((a) => (
-                    <div key={a.id} className="rounded-xl border p-4">
-                      <strong>{a.name}</strong>
-                      <p>
-                        {a.address}, {a.lga}, {a.state}
-                      </p>
-                      <p>{a.phone}</p>
-                      <button
-                        className="mt-3 text-sm underline"
-                        onClick={() =>
-                          void send("customer/delete-address", { id: a.id })
-                            .then(() => {
-                              void query.invalidateQueries({ queryKey: ["private", "addresses"] });
-                              toast.success("Address removed.");
-                            })
-                            .catch(notifyError)
-                        }
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <form
-                className="space-y-4"
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  const form = e.currentTarget;
-                  try {
-                    await send("customer/address", Object.fromEntries(new FormData(form)));
-                    form.reset();
-                    void addresses.refetch();
-                    toast.success("Address saved.");
-                  } catch (error) {
-                    notifyError(error);
-                  }
-                }}
-              >
-                <h2 className="text-xl font-bold">Add an address</h2>
-                {["name", "phone", "address", "state", "lga"].map((name) => (
-                  <Field
-                    key={name}
-                    name={name}
-                    label={name === "lga" ? "LGA / city" : name[0]!.toUpperCase() + name.slice(1)}
-                    required
-                  />
-                ))}
-                <button className="action-button">Save address</button>
-              </form>
-            </section>
-          )}
-          {tab === "security" && <SecurityPanel />}
-        </div>
+        </section>
       )}
-    </SiteShell>
+      {tab === "wishlist" && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-7">
+          <Heart size={28} className="mb-4 text-brand" />
+          <h2 className="text-lg font-bold">Your saved favourites</h2>
+          <p className="mt-2 text-sm text-slate-500">
+            Keep the health essentials you love close at hand.
+          </p>
+          <button className="action-button mt-6" onClick={shop.openWishlist}>
+            Open wishlist ({shop.wishlist.length})
+          </button>
+        </section>
+      )}
+      {tab === "security" && (
+        <section className="max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <div className="mb-7 flex items-center gap-3">
+            <ShieldCheck className="text-brand" />
+            <h2 className="text-lg font-bold">Keep your account secure</h2>
+          </div>
+          <SecurityPanel />
+        </section>
+      )}
+      <WorkspaceModal
+        open={editProfile}
+        onClose={() => setEditProfile(false)}
+        title="Edit your profile"
+      >
+        <form
+          className="space-y-5"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const d = new FormData(e.currentTarget);
+            try {
+              await send("customer/profile", Object.fromEntries(d));
+              await account.refresh();
+              setEditProfile(false);
+              toast.success("Your profile has been updated.");
+            } catch (error) {
+              notifyError(error);
+            }
+          }}
+        >
+          <Field name="name" label="Full name" defaultValue={user.name} required />
+          <Field label="Email address" value={user.email} readOnly />
+          <Field name="phone" label="Phone number" defaultValue={user.phone} />
+          <button className="action-button">Save profile</button>
+        </form>
+      </WorkspaceModal>
+      <WorkspaceModal
+        open={addAddress}
+        onClose={() => setAddAddress(false)}
+        title="Add a delivery address"
+      >
+        <form
+          className="space-y-5"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const form = e.currentTarget;
+            try {
+              await send("customer/address", Object.fromEntries(new FormData(form)));
+              setAddAddress(false);
+              void addresses.refetch();
+              toast.success("Address saved.");
+            } catch (error) {
+              notifyError(error);
+            }
+          }}
+        >
+          {["name", "phone", "address", "state", "lga"].map((name) => (
+            <Field
+              key={name}
+              name={name}
+              label={name === "lga" ? "LGA / city" : name[0]!.toUpperCase() + name.slice(1)}
+              required
+            />
+          ))}
+          <button className="action-button">Save address</button>
+        </form>
+      </WorkspaceModal>
+    </WorkspaceShell>
   );
 }
 export function Retry({ error, retry }: { error: unknown; retry: () => void }) {
