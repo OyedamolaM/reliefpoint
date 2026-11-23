@@ -41,7 +41,7 @@ export function CustomerPanels({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-2xl">
+      <DialogContent className="max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-2xl border-slate-200 bg-white p-6 shadow-2xl sm:p-8">
         {panel === "account" ? (
           <AccountDialog onClose={onClose} />
         ) : panel === "prescription" ? (
@@ -94,12 +94,16 @@ function AccountDialog({ onClose }: { onClose: () => void }) {
             </Link>
           </Button>
           {account.user.roles.length > 0 && (
-            <Link to="/admin" onClick={onClose} className="block underline">
+            <Link
+              to="/admin"
+              onClick={onClose}
+              className="block rounded-xl border border-slate-200 px-4 py-3 text-center text-sm font-semibold text-brand hover:bg-blue-50"
+            >
               Administration
             </Link>
           )}
           <button
-            className="block underline"
+            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
             onClick={() =>
               void account
                 .logout()

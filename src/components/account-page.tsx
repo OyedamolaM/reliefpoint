@@ -17,6 +17,8 @@ import {
   Plus,
   ArrowUpRight,
   Pencil,
+  LockKeyhole,
+  ArrowRight,
 } from "lucide-react";
 import { WorkspaceShell, WorkspaceModal, EmptyWorkspace } from "./workspace-shell";
 import { useCommerce } from "./commerce-provider";
@@ -27,8 +29,15 @@ export function AuthForm() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   return (
-    <section className="mx-auto max-w-md">
-      <h1 className="mb-6 text-3xl font-bold">
+    <section className="mx-auto w-full max-w-md">
+      <div className="mb-5 flex items-center gap-3">
+        <img src="/reliefpoint-icon-blue.svg" alt="" className="h-10 w-10" />
+        <div>
+          <p className="text-sm font-bold text-brand">ReliefPoint Pharmacy</p>
+          <p className="text-xs text-slate-500">Your everyday care, together.</p>
+        </div>
+      </div>
+      <h1 className="mb-2 pr-5 text-2xl font-bold tracking-tight">
         {mode === "signin"
           ? "Welcome to ReliefPoint"
           : mode === "signup"
@@ -37,6 +46,34 @@ export function AuthForm() {
               ? "Verify your email"
               : "Reset your password"}
       </h1>
+      <p className="mb-6 text-sm leading-6 text-slate-500">
+        {mode === "signin"
+          ? "Sign in to manage your orders and account."
+          : mode === "signup"
+            ? "Save your details for an easier next visit."
+            : "Enter your email and we’ll send you a secure link."}
+      </p>
+      <div
+        className="mb-6 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1"
+        aria-label="Account options"
+      >
+        {["signin", "signup"].map((option) => (
+          <button
+            key={option}
+            type="button"
+            disabled={busy}
+            aria-pressed={mode === option}
+            aria-label={option === "signin" ? "Switch to sign in" : "Switch to create account"}
+            className={`rounded-lg px-4 py-2.5 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-brand ${mode === option ? "bg-white text-brand shadow-sm" : "text-slate-500 hover:text-brand"}`}
+            onClick={() => {
+              setMode(option);
+              setMessage("");
+            }}
+          >
+            {option === "signin" ? "Sign in" : "Create account"}
+          </button>
+        ))}
+      </div>
       <form
         className="space-y-4"
         onSubmit={async (e) => {
@@ -88,7 +125,11 @@ export function AuthForm() {
             {message}
           </p>
         )}
-        <button className="action-button w-full" disabled={busy}>
+        <button
+          className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-bold text-white transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-wait disabled:opacity-60"
+          disabled={busy}
+          aria-busy={busy}
+        >
           {busy
             ? "Please wait…"
             : mode === "signin"
@@ -98,14 +139,18 @@ export function AuthForm() {
                 : mode === "resend"
                   ? "Send verification email"
                   : "Send reset link"}
+          {!busy && <ArrowRight size={17} />}
         </button>
       </form>
-      <div className="mt-5 flex flex-wrap gap-5 text-sm font-semibold underline">
-        {["signin", "signup", "reset", "resend"]
+      <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs font-semibold text-brand">
+        {["reset", "resend"]
           .filter((m) => m !== mode)
           .map((m) => (
             <button
               key={m}
+              type="button"
+              disabled={busy}
+              className="rounded-lg px-2 py-2 hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-brand"
               onClick={() => {
                 setMode(m);
                 setMessage("");
@@ -121,7 +166,14 @@ export function AuthForm() {
             </button>
           ))}
       </div>
-      <Link to="/" className="mt-6 inline-block text-sm underline">
+      <p className="mt-5 flex items-center justify-center gap-2 border-t border-slate-100 pt-4 text-xs text-slate-500">
+        <LockKeyhole size={13} />
+        Your account details stay private.
+      </p>
+      <Link
+        to="/"
+        className="mt-4 block rounded-lg py-2 text-center text-xs font-semibold text-slate-500 hover:text-brand"
+      >
         Continue shopping as a guest
       </Link>
     </section>

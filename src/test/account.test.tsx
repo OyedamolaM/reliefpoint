@@ -22,7 +22,7 @@ function mount() {
 describe("secure account forms", () => {
   it("validates matching passwords before registration", () => {
     mount();
-    fireEvent.click(screen.getByText("Register"));
+    fireEvent.click(screen.getByRole("button", { name: "Switch to create account" }));
     fireEvent.change(screen.getByLabelText("Full name"), { target: { value: "Amina Test" } });
     fireEvent.change(screen.getByLabelText("Email address"), {
       target: { value: "amina@example.com" },
@@ -31,7 +31,7 @@ describe("secure account forms", () => {
     fireEvent.change(screen.getByLabelText("Confirm password"), {
       target: { value: "different123" },
     });
-    fireEvent.submit(screen.getByText("Create account").closest("form")!);
+    fireEvent.submit(screen.getByRole("button", { name: "Create account" }).closest("form")!);
     expect(screen.getByRole("status")).toHaveTextContent("passwords do not match");
   });
   it("preserves entered details and displays a friendly sign-in failure", async () => {

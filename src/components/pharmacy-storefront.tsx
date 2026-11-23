@@ -36,6 +36,7 @@ import { useEffect } from "react";
 import { Link } from "@tanstack/react-router";
 import { api, notifyError } from "@/lib/api";
 import { HealthTipsSection } from "./blog";
+import { useAccount } from "./auth-provider";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { useCommerce } from "@/components/commerce-provider";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -114,6 +115,7 @@ const categoryIcons = [
   ClipboardPlus,
 ];
 export function PharmacyStorefront({ design }: { design: StoreDesign }) {
+  const account = useAccount();
   const shop = useCommerce();
   const isMobile = useIsMobile();
   const [query, setQuery] = useState("");
@@ -146,7 +148,7 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
       const params = new URLSearchParams({
         q: query,
         category,
-          max: maxPrice === 100000 ? "" : String(maxPrice * 100),
+        max: maxPrice === 100000 ? "" : String(maxPrice * 100),
         stock: stockOnly ? "1" : "0",
         deals: dealsOnly ? "1" : "0",
         sort,
@@ -489,65 +491,129 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent
           side="left"
-          className="w-[min(340px,90vw)] overflow-y-auto p-5 [&>button.absolute]:hidden"
+          className="flex w-[min(340px,90vw)] flex-col gap-0 overflow-y-auto bg-white p-0 [&>button.absolute]:hidden"
         >
           <SheetTitle className="sr-only">Store navigation</SheetTitle>
           <SheetDescription className="sr-only">
             Browse departments and pharmacy services
           </SheetDescription>
-          <div className="mobile-navigation-content">
-            <div className="flex items-center justify-between border-b pb-4">
-              <strong className="text-xl">ReliefPoint</strong>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Close menu"
-                onClick={() => setMobileOpen(false)}
-              >
-                <X />
-              </Button>
-            </div>
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+            <Link to="/" onClick={() => setMobileOpen(false)} className="flex items-center gap-2.5">
+              <img src="/reliefpoint-icon-blue.svg" alt="" className="h-9 w-9" />
+              <span className="text-base font-bold text-brand">
+                ReliefPoint
+                <span className="block text-[10px] font-medium text-slate-500">
+                  Pharmacy & everyday care
+                </span>
+              </span>
+            </Link>
             <button
+              className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"
+              aria-label="Close menu"
+              onClick={() => setMobileOpen(false)}
+            >
+              <X size={18} />
+            </button>
+          </div>
+          <div className="px-4 py-4">
+            <button
+              className="flex w-full items-center gap-3 rounded-xl bg-brand px-4 py-3 text-left text-white"
               onClick={() => {
                 setMobileOpen(false);
                 shop.openPanel("account");
               }}
             >
-              <UserRound size={18} />
-              Sign in / Register
+              <span className="rounded-lg bg-white/15 p-2">
+                <UserRound size={18} />
+              </span>
+              <span className="flex-1 text-sm font-bold">
+                {account.user ? "My account" : "Sign in / Register"}
+                <span className="mt-0.5 block text-[11px] font-normal text-blue-100">
+                  {account.user ? "Orders, profile & saved details" : "Welcome to ReliefPoint"}
+                </span>
+              </span>
+              <ChevronRight size={16} />
             </button>
-            <button onClick={hotDeals}>
-              <Sparkles size={18} />
-              Hot deals
-            </button>
-            <h3 className="mt-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">
-              Shop by category
-            </h3>
-            {shop.categories.map((c) => (
-              <button key={c} onClick={() => choose(c)}>
-                {c}
-                <ChevronRight size={16} />
+          </div>
+          <nav aria-label="Mobile store navigation" className="flex-1 px-4 pb-5">
+            <div className="mb-5 grid grid-cols-2 gap-2">
+              <button
+                className="flex items-center justify-center gap-2 rounded-xl bg-[#B9FF00] px-3 py-3 text-xs font-bold text-[#173FC5]"
+                onClick={() => {
+                  setMobileOpen(false);
+                  hotDeals();
+                }}
+              >
+                <Sparkles size={16} />
+                Hot deals
               </button>
-            ))}
-            <div className="mt-4 border-t pt-4">
-              {[
-                { label: "Upload prescription", panel: "prescription" },
-                { label: "Health services", panel: "service" },
-                { label: "Track order", panel: "tracking" },
-                { label: "Find a location", panel: "stores" },
-              ].map((item) => (
+              <Link
+                to="/health-tips"
+                onClick={() => setMobileOpen(false)}
+                className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-3 text-xs font-semibold text-brand"
+              >
+                <HeartPulse size={16} />
+                Health Tips
+              </Link>
+            </div>
+            <p className="mb-2 px-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              Shop by category
+            </p>
+            <div className="space-y-0.5">
+              {shop.categories.map((c) => (
                 <button
-                  key={item.label}
+                  key={c}
+                  className="flex min-h-10 w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-brand"
                   onClick={() => {
                     setMobileOpen(false);
-                    shop.openPanel(item.panel as "service");
+                    choose(c);
                   }}
                 >
-                  {item.label}
+                  {c}
+                  <ChevronRight size={14} className="text-slate-400" />
                 </button>
               ))}
             </div>
-          </div>
+            <p className="mb-2 mt-5 border-t border-slate-100 px-2 pt-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              Pharmacy care
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: "Prescription", panel: "prescription", icon: Upload },
+                { label: "Health services", panel: "service", icon: Stethoscope },
+                { label: "Track purchase", panel: "tracking", icon: PackageSearch },
+                { label: "Find us", panel: "stores", icon: MapPin },
+              ].map(({ label, panel, icon: Icon }) => (
+                <button
+                  key={panel}
+                  className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-3 text-left text-xs font-semibold text-slate-600 hover:border-brand/30 hover:bg-blue-50"
+                  onClick={() => {
+                    setMobileOpen(false);
+                    shop.openPanel(panel as "service");
+                  }}
+                >
+                  <Icon size={16} className="shrink-0 text-brand" />
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="mt-4 flex justify-between gap-2 text-xs font-semibold text-slate-500">
+              <Link
+                to="/about"
+                className="rounded-lg px-3 py-2 hover:bg-slate-50"
+                onClick={() => setMobileOpen(false)}
+              >
+                About us
+              </Link>
+              <Link
+                to="/contact"
+                className="rounded-lg px-3 py-2 hover:bg-slate-50"
+                onClick={() => setMobileOpen(false)}
+              >
+                Contact
+              </Link>
+            </div>
+          </nav>
         </SheetContent>
       </Sheet>
       <main id="top">
