@@ -55,6 +55,22 @@ beforeEach(() => {
   state.factors = [{ id: "factor-1", name: "ReliefPoint" }];
 });
 describe("pharmacy workspaces", () => {
+  it("provides state choices when adding the first delivery zone", async () => {
+    render(<AdminPage />);
+    fireEvent.click(
+      within(screen.getByRole("navigation", { name: "Administration" })).getByRole("button", {
+        name: "Delivery",
+      }),
+    );
+    await screen.findByText("No delivery zones yet");
+    fireEvent.click(screen.getByRole("button", { name: "Add new" }));
+    const modal = screen.getByRole("dialog", { name: "Add record" });
+    const state = within(modal).getByLabelText("State / FCT");
+    expect(state.tagName).toBe("SELECT");
+    expect(state.querySelectorAll("option")).toHaveLength(38);
+    expect(within(modal).getByLabelText("Delivery fee (₦)")).toBeRequired();
+    expect(within(modal).getByLabelText("LGA / city")).toBeRequired();
+  });
   it("offers setup only to accounts without a registered authenticator", async () => {
     state.user.mfaVerified = false;
     state.factors = [];

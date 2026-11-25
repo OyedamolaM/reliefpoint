@@ -5,7 +5,8 @@ import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { api, send, notifyError } from "@/lib/api";
 import type { Quote, ShippingZone, CheckoutInput } from "@/lib/contracts";
-import { formatNaira, type CartItem } from "@/lib/commerce";
+import { formatNaira, whatsapp, type CartItem } from "@/lib/commerce";
+import { nigerianStates, deliveryState } from "@/lib/nigeria";
 import { useAccount } from "./auth-provider";
 import { Field } from "./account-page";
 export function LiveCheckout({ cart, onBack }: { cart: CartItem[]; onBack: () => void }) {
@@ -44,6 +45,14 @@ export function LiveCheckout({ cart, onBack }: { cart: CartItem[]; onBack: () =>
     enabled: !!account.user,
     retry: false,
   });
+  const activeZones = zones.data?.zones.filter((z) => z.active !== false) ?? [];
+  const stateZones = activeZones
+    .filter((z) => deliveryState(z.state) === state)
+    .sort((a, b) => `${a.lga} ${a.area}`.localeCompare(`${b.lga} ${b.area}`));
+  const selectedZone = stateZones.find((z) => z.id === zone);
+  const stateOptions = [
+    ...new Set([...nigerianStates, ...activeZones.map((z) => deliveryState(z.state))]),
+  ].sort();
   const needsRx = cart.some((i) => i.product.prescription);
   const input = (): CheckoutInput => ({
     items: cart.map(({ product, quantity }) => ({ id: product.id, quantity })),
@@ -111,6 +120,13 @@ export function LiveCheckout({ cart, onBack }: { cart: CartItem[]; onBack: () =>
           className="space-y-4"
           onSubmit={async (e) => {
             e.preventDefault();
+            if (busy) return;
+            if (!selectedZone || zones.isError || zones.isPending) {
+              const message = "Select an available delivery area before continuing.";
+              setError(message);
+              toast.error(message, { id: "delivery-area-required" });
+              return;
+            }
             if (needsRx && !file) {
               setError("Select your prescription to continue.");
               toast.error("Select your prescription to continue.");
@@ -144,7 +160,7 @@ export function LiveCheckout({ cart, onBack }: { cart: CartItem[]; onBack: () =>
                       phone: selected.phone,
                       address: selected.address,
                     }));
-                    setState(selected.state);
+                    setState(deliveryState(selected.state));
                     setZone("");
                   }
                 }}
@@ -179,16 +195,19 @@ export function LiveCheckout({ cart, onBack }: { cart: CartItem[]; onBack: () =>
           <label className="block text-sm font-semibold">
             State / FCT
             <select
+              aria-label="State / FCT"
               className="commerce-input mt-2"
               required
               value={state}
               onChange={(e) => {
                 setState(e.target.value);
                 setZone("");
+                setError("");
+                setQuote(null);
               }}
             >
               <option value="">Select state</option>
-              {[...new Set(zones.data?.zones.map((z) => z.state) ?? [])].map((s) => (
+              {stateOptions.map((s) => (
                 <option key={s}>{s}</option>
               ))}
             </select>
@@ -196,27 +215,69 @@ export function LiveCheckout({ cart, onBack }: { cart: CartItem[]; onBack: () =>
           <label className="block text-sm font-semibold">
             Delivery area
             <select
+              aria-label="Delivery area"
               className="commerce-input mt-2"
               required
+              disabled={!state || zones.isPending || zones.isError || stateZones.length === 0}
               value={zone}
               onChange={(e) => setZone(e.target.value)}
             >
-              <option value="">Select LGA / area</option>
-              {zones.data?.zones
-                .filter((z) => z.state === state)
-                .map((z) => (
-                  <option value={z.id} key={z.id}>
-                    {z.lga}
-                    {z.area ? ` — ${z.area}` : ""}
-                  </option>
-                ))}
+              <option value="">
+                {zones.isPending
+                  ? "Loading delivery areas…"
+                  : !state
+                    ? "Select a state first"
+                    : stateZones.length === 0
+                      ? "No delivery areas available"
+                      : "Select LGA / area"}
+              </option>
+              {stateZones.map((z) => (
+                <option value={z.id} key={z.id}>
+                  {z.lga}
+                  {z.area ? ` — ${z.area}` : ""}
+                </option>
+              ))}
             </select>
           </label>
-          {zones.data?.zones.length === 0 && (
-            <p className="text-sm">
-              Delivery is not available online yet. Please contact our pharmacy team.
+          {zones.isPending && (
+            <p role="status" className="text-sm">
+              Loading delivery areas…
             </p>
           )}
+          {zones.isError && (
+            <div role="alert" className="rounded-xl border border-red-200 p-3 text-sm">
+              <p>We couldn’t load delivery areas. Your details are still here.</p>
+              <button
+                type="button"
+                className="mt-2 font-semibold text-brand underline"
+                onClick={() => {
+                  notifyError(zones.error);
+                  void zones.refetch();
+                }}
+              >
+                Try again
+              </button>
+            </div>
+          )}
+          {zones.isSuccess &&
+            (activeZones.length === 0 || (!!state && stateZones.length === 0)) && (
+              <p className="rounded-xl bg-secondary p-3 text-sm leading-6">
+                {activeZones.length === 0
+                  ? "Online delivery isn’t available yet."
+                  : `Online delivery isn’t available in ${state} yet.`}{" "}
+                <a
+                  className="font-semibold text-brand underline"
+                  href={whatsapp(
+                    `Hello ReliefPoint, I would like to arrange delivery${state ? ` to ${state}` : ""}.`,
+                  )}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Chat with our team
+                </a>
+                .
+              </p>
+            )}
           <Field
             label="Delivery note (optional)"
             value={contact.note}
@@ -247,7 +308,10 @@ export function LiveCheckout({ cart, onBack }: { cart: CartItem[]; onBack: () =>
               </span>
             </label>
           )}
-          <button className="action-button w-full" disabled={busy}>
+          <button
+            className="action-button w-full disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={busy || !selectedZone || zones.isPending || zones.isError}
+          >
             {busy ? "Checking…" : "Continue to payment"}
           </button>
           <button type="button" className="w-full underline" onClick={onBack}>

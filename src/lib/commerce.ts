@@ -1,3 +1,5 @@
+import { nigerianStates } from "./nigeria";
+export { nigerianStates } from "./nigeria";
 import supplements from "@/assets/pharmacy-supplements.webp";
 import skincare from "@/assets/pharmacy-skincare.webp";
 import devices from "@/assets/pharmacy-health-devices.webp";
@@ -250,45 +252,6 @@ export function filterProducts(
   );
 }
 
-export const nigerianStates = [
-  "Abia",
-  "Adamawa",
-  "Akwa Ibom",
-  "Anambra",
-  "Bauchi",
-  "Bayelsa",
-  "Benue",
-  "Borno",
-  "Cross River",
-  "Delta",
-  "Ebonyi",
-  "Edo",
-  "Ekiti",
-  "Enugu",
-  "Abuja (FCT)",
-  "Gombe",
-  "Imo",
-  "Jigawa",
-  "Kaduna",
-  "Kano",
-  "Katsina",
-  "Kebbi",
-  "Kogi",
-  "Kwara",
-  "Lagos",
-  "Nasarawa",
-  "Niger",
-  "Ogun",
-  "Ondo",
-  "Osun",
-  "Oyo",
-  "Plateau",
-  "Rivers",
-  "Sokoto",
-  "Taraba",
-  "Yobe",
-  "Zamfara",
-];
 products.push(
   {
     id: "sensodyne",

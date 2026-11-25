@@ -6,6 +6,7 @@ import { assertMedia } from "./uploads";
 import { invalidatePublic } from "./public-cache";
 import { verifiedPaymentStatuses, unverifiedPaymentStatuses } from "@/lib/order-groups";
 import { salesPeriod } from "@/lib/sales-period";
+import { deliveryState } from "@/lib/nigeria";
 
 const permissions: Record<string, StaffRole[]> = {
   products: ["owner", "admin", "pharmacist"],
@@ -197,9 +198,9 @@ export async function adminWrite(ctx: Context, resource: string, body: unknown) 
     const input = z
       .object({
         id: z.string().uuid().optional(),
-        state: z.string().min(2).max(80),
-        lga: z.string().min(2).max(80),
-        area: z.string().max(100),
+        state: z.string().trim().min(2).max(80).transform(deliveryState),
+        lga: z.string().trim().min(2).max(80),
+        area: z.string().trim().max(100),
         fee_kobo: z.number().int().min(0).max(10000000),
         free_over_kobo: z.number().int().min(0).nullable(),
         estimate: z.string().min(3).max(200),

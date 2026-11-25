@@ -7,6 +7,7 @@ import { Link } from "@tanstack/react-router";
 import { api, send, notifyError } from "@/lib/api";
 import { slugify, roles, productSchema, type StaffRole } from "@/lib/contracts";
 import { nigeriaDate, salesPeriod } from "@/lib/sales-period";
+import { nigerianStates, deliveryState } from "@/lib/nigeria";
 import { useAccount } from "./auth-provider";
 import { AuthForm, Field, Pagination, Retry, AuthenticatorPanel } from "./account-page";
 import { SiteShell } from "./site-shell";
@@ -763,12 +764,16 @@ export function AdminPage() {
                         ? "No confirmed orders yet"
                         : active === "pending_orders"
                           ? "No pending payments"
-                          : "Nothing here yet"
+                          : active === "shipping_zones"
+                            ? "No delivery zones yet"
+                            : "Nothing here yet"
                     }
                     description={
                       active === "orders"
                         ? "Purchases appear here after payment is verified."
-                        : "New records will appear in this section."
+                        : active === "shipping_zones"
+                          ? "Add a zone with a state, LGA, delivery fee and estimate to make its area available at checkout."
+                          : "New records will appear in this section."
                     }
                   />
                 )}
@@ -1298,7 +1303,24 @@ function AdminEditor({
       )}
       {resource === "shipping_zones" && (
         <>
-          {["state", "lga", "area", "estimate"].map((key) => (
+          <label className="block text-sm font-semibold">
+            State / FCT
+            <select
+              className="commerce-input mt-2"
+              name="state"
+              aria-label="State / FCT"
+              defaultValue={deliveryState(row.state ?? "")}
+              required
+            >
+              <option value="">Select state</option>
+              {[...new Set([...nigerianStates, ...(row.state ? [deliveryState(row.state)] : [])])]
+                .sort()
+                .map((state) => (
+                  <option key={state}>{state}</option>
+                ))}
+            </select>
+          </label>
+          {["lga", "area", "estimate"].map((key) => (
             <Field
               key={key}
               label={
