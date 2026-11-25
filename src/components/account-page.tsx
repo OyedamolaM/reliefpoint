@@ -630,8 +630,9 @@ export function Pagination({
     </div>
   );
 }
-export function SecurityPanel() {
+export function AuthenticatorPanel() {
   const account = useAccount();
+  const [busy, setBusy] = useState(false);
   const [enrollment, setEnrollment] = useState<{ id: string; qr: string; secret: string } | null>(
     null,
   );
@@ -639,100 +640,183 @@ export function SecurityPanel() {
   const factors = useQuery({
     queryKey: ["private", "mfa", account.user?.id],
     queryFn: () => send<{ factors: { id: string; name: string }[] }>("auth/mfa-factors", {}),
+    enabled: !!account.user && account.user.aal !== "aal2",
     retry: false,
   });
   return (
-    <div className="grid gap-8 md:grid-cols-2">
-      <section className="space-y-4">
-        <h2 className="text-xl font-bold">Two-step verification</h2>
-        <p className="text-sm">Required for staff access.</p>
-        {factors.data?.factors.map((f) => (
-          <button key={f.id} className="block underline" onClick={() => setFactor(f.id)}>
-            Verify {f.name || "authenticator"}
-          </button>
-        ))}
-        <button
-          className="action-button"
-          onClick={() =>
-            void send<{ id: string; qr: string; secret: string }>("auth/mfa-enroll", {})
-              .then((r) => {
-                setEnrollment(r);
-                setFactor(r.id);
-              })
-              .catch(notifyError)
-          }
-        >
-          Set up authenticator
-        </button>
-        {enrollment && (
-          <div>
-            <img
-              src={
-                enrollment.qr.startsWith("data:")
-                  ? enrollment.qr
-                  : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(enrollment.qr)}`
-              }
-              alt="Scan this code in your authenticator app"
-              width="200"
-              height="200"
-            />
-            <p className="break-all text-sm">Setup key: {enrollment.secret}</p>
+    <section className="space-y-5">
+      {account.user?.aal === "aal2" ? (
+        <div className="rounded-xl bg-emerald-50 p-5 text-emerald-800">
+          <ShieldCheck className="mb-3" />
+          <h2 className="font-bold">Authenticator verified</h2>
+          <p className="mt-2 text-sm">Two-step verification is complete for this session.</p>
+        </div>
+      ) : (
+        <>
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-brand">
+            <ShieldCheck />
           </div>
-        )}
-        {factor && (
+          <h2 className="text-xl font-bold">
+            {enrollment || factors.data?.factors.length === 0
+              ? "Set up your authenticator"
+              : "Enter your verification code"}
+          </h2>
+          {factors.isLoading && (
+            <p role="status" className="text-sm text-slate-500">
+              Checking your authenticator…
+            </p>
+          )}
+          {factors.error && <Retry error={factors.error} retry={() => void factors.refetch()} />}
+          {!enrollment && !!factors.data?.factors.length && (
+            <p className="text-sm leading-6 text-slate-500">
+              Open your authenticator app and enter the six-digit code for ReliefPoint.
+            </p>
+          )}
+          {!enrollment && factors.data?.factors.length === 0 && (
+            <>
+              <p className="text-sm leading-6 text-slate-500">
+                Connect an authenticator app once to protect your account.
+              </p>
+              <button
+                className="action-button"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    const r = await send<{ id: string; qr: string; secret: string }>(
+                      "auth/mfa-enroll",
+                      {},
+                    );
+                    setEnrollment(r);
+                    setFactor(r.id);
+                  } catch (error) {
+                    notifyError(error);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                {busy ? "Preparing…" : "Set up authenticator"}
+              </button>
+            </>
+          )}
+          {enrollment && (
+            <div>
+              <img
+                src={
+                  enrollment.qr.startsWith("data:")
+                    ? enrollment.qr
+                    : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(enrollment.qr)}`
+                }
+                alt="Scan this code in your authenticator app"
+                width="200"
+                height="200"
+              />
+              <p className="mb-3 text-sm text-slate-500">
+                Scan the QR code, then enter the code shown in your app.
+              </p>
+              <details className="rounded-lg border p-3 text-sm">
+                <summary className="cursor-pointer font-semibold">Can’t scan the code?</summary>
+                <p className="mt-3 break-all">Setup key: {enrollment.secret}</p>
+              </details>
+            </div>
+          )}
+          {(factor || !!factors.data?.factors.length) && (
+            <form
+              className="space-y-3"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (busy) return;
+                setBusy(true);
+                try {
+                  await send("auth/mfa-verify", {
+                    id: factor || factors.data!.factors[0]!.id,
+                    code: new FormData(e.currentTarget).get("code"),
+                  });
+                  await account.changed();
+                  setEnrollment(null);
+                  setFactor("");
+                  toast.success("Your identity has been verified.");
+                } catch (error) {
+                  notifyError(error);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              <Field
+                label="Authenticator code"
+                name="code"
+                pattern="[0-9]{6}"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                minLength={6}
+                autoFocus
+                required
+              />
+              {factors.data && factors.data.factors.length > 1 && !enrollment && (
+                <label className="block text-sm">
+                  Authenticator
+                  <select
+                    className="commerce-input mt-2"
+                    value={factor || factors.data.factors[0]!.id}
+                    onChange={(e) => setFactor(e.target.value)}
+                  >
+                    {factors.data.factors.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name || "Authenticator"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <button disabled={busy} className="action-button w-full">
+                {busy ? "Verifying…" : "Continue"}
+              </button>
+            </form>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+export function SecurityPanel() {
+  const account = useAccount();
+  return (
+    <div className="space-y-8">
+      {!account.user?.recovery && <AuthenticatorPanel />}
+      <section className="space-y-5 border-t border-slate-100 pt-6">
+        <h2 className="text-xl font-bold">Password & sessions</h2>
+        <details
+          open={account.user?.recovery || undefined}
+          className="rounded-xl border border-slate-200 p-4"
+        >
+          <summary className="cursor-pointer text-sm font-semibold">
+            {account.user?.recovery ? "Set a new password" : "Change password"}
+          </summary>
           <form
-            className="space-y-3"
+            className="mt-5 space-y-4"
             onSubmit={async (e) => {
               e.preventDefault();
+              const form = e.currentTarget;
               try {
-                await send("auth/mfa-verify", {
-                  id: factor,
-                  code: new FormData(e.currentTarget).get("code"),
-                });
-                await account.changed();
-                setEnrollment(null);
-                setFactor("");
-                void factors.refetch();
-                toast.success("Your identity has been verified.");
+                await send("auth/password", Object.fromEntries(new FormData(form)));
+                form.reset();
+                await account.refresh();
+                toast.success("Your password has been updated.");
               } catch (error) {
                 notifyError(error);
               }
             }}
           >
-            <Field
-              label="Authenticator code"
-              name="code"
-              pattern="[0-9]{6}"
-              inputMode="numeric"
-              required
-            />
-            <button className="action-button">Verify code</button>
+            {!account.user?.recovery && (
+              <Field label="Current password" name="current_password" type="password" required />
+            )}
+            <Field label="New password" name="password" type="password" minLength={10} required />
+            <button className="action-button">Update password</button>
           </form>
-        )}
-      </section>
-      <section className="space-y-5">
-        <h2 className="text-xl font-bold">Password & sessions</h2>
-        <form
-          className="space-y-4"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const form = e.currentTarget;
-            try {
-              await send("auth/password", Object.fromEntries(new FormData(form)));
-              form.reset();
-              await account.refresh();
-              toast.success("Your password has been updated.");
-            } catch (error) {
-              notifyError(error);
-            }
-          }}
-        >
-          {!account.user?.recovery && (
-            <Field label="Current password" name="current_password" type="password" required />
-          )}
-          <Field label="New password" name="password" type="password" minLength={10} required />
-          <button className="action-button">Update password</button>
-        </form>
+        </details>
         <button
           className="underline"
           onClick={() =>

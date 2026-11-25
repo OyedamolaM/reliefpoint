@@ -6,7 +6,7 @@ import { Link } from "@tanstack/react-router";
 import { api, send, notifyError } from "@/lib/api";
 import { slugify, roles, type StaffRole } from "@/lib/contracts";
 import { useAccount } from "./auth-provider";
-import { AuthForm, Field, Pagination, Retry, SecurityPanel } from "./account-page";
+import { AuthForm, Field, Pagination, Retry, AuthenticatorPanel } from "./account-page";
 import { SiteShell } from "./site-shell";
 import { formatNaira } from "@/lib/commerce";
 import { OrderView } from "./order-page";
@@ -226,7 +226,7 @@ export function AdminPage() {
               <p className="mb-7 text-sm text-slate-500">
                 Use your authenticator app to access administration.
               </p>
-              <SecurityPanel />
+              <AuthenticatorPanel />
             </>
           )}
         </div>
@@ -260,7 +260,7 @@ export function AdminPage() {
       ) : user.aal !== "aal2" ? (
         <div>
           <h1 className="mb-6 text-3xl font-bold">Secure staff access</h1>
-          <SecurityPanel />
+          <AuthenticatorPanel />
         </div>
       ) : (
         <div>

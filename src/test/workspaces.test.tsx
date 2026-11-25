@@ -22,11 +22,13 @@ vi.mock("@/components/auth-provider", () => ({
   }),
 }));
 vi.mock("@/components/commerce-provider", () => ({
-  useCommerce: () => ({ wishlist: [], openWishlist: vi.fn() }),
+  useCommerce: () => ({ wishlist: [], openWishlist: vi.fn(), openCart: vi.fn(), count: 0, settings: {} }),
 }));
 vi.mock("@/lib/api", () => ({
   notifyError: vi.fn(),
-  send: vi.fn(async () => ({})),
+  send: vi.fn(async (path: string) =>
+    path === "auth/mfa-factors" ? { factors: [{ id: "factor-1", name: "ReliefPoint" }] } : {},
+  ),
   api: async (path: string) => {
     state.calls.push(path);
     if (path === "admin/summary")
@@ -35,12 +37,29 @@ vi.mock("@/lib/api", () => ({
   },
 }));
 import { AdminPage } from "@/components/admin-page";
-import { AccountPage } from "@/components/account-page";
+import { AccountPage, SecurityPanel } from "@/components/account-page";
 afterEach(cleanup);
 beforeEach(() => {
   state.calls = [];
+  state.user.aal = "aal2";
 });
 describe("pharmacy workspaces", () => {
+  it("shows only the code challenge for enrolled staff signing in", async () => {
+    state.user.aal = "aal1";
+    render(<AdminPage />);
+    expect(await screen.findByLabelText("Authenticator code")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Set up authenticator" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Current password")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("New password")).not.toBeInTheDocument();
+  });
+  it("shows verified status and keeps password changes collapsed in settings", () => {
+    render(<SecurityPanel />);
+    expect(screen.getByText("Authenticator verified")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Set up authenticator" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Current password")).not.toBeVisible();
+    fireEvent.click(screen.getByText("Change password"));
+    expect(screen.getByLabelText("Current password")).toBeVisible();
+  });
   it("groups administration and keeps stock history and payments out of the main menu", async () => {
     render(<AdminPage />);
     const nav = screen.getByRole("navigation", { name: "Administration" });
