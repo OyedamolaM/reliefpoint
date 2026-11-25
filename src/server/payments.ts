@@ -5,6 +5,7 @@ import { config } from "./config";
 import { AppError, checkDb, timedFetch, requireDb } from "./errors";
 import { identity, rate, type Context } from "./session";
 import { readBody } from "./body";
+import { assertCheckoutReady } from "./checkout-readiness";
 
 export async function paystack(path: string, body?: unknown) {
   const key = config().PAYSTACK_SECRET_KEY;
@@ -66,6 +67,7 @@ export async function quoteCheckout(ctx: Context, input: unknown) {
   const data = checkoutSchema.parse(input);
   await rate(ctx, "quote", 20, 60, ctx.guestHash);
   await rate(ctx, "quote-ip", 60, 60);
+  await assertCheckoutReady(ctx.db);
   return {
     quote: requireDb(
       await ctx.db.rpc("calculate_quote", { p_items: data.items, p_zone: data.zone_id }),

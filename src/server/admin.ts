@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { postSchema, productSchema, roles, type StaffRole } from "@/lib/contracts";
 import { AppError, checkDb, requireDb } from "./errors";
-import { audit, requireStaff, type Context } from "./session";
+import { audit, requireStaff, rate, type Context, type Identity } from "./session";
 import { assertMedia } from "./uploads";
 import { invalidatePublic } from "./public-cache";
 import { verifiedPaymentStatuses, unverifiedPaymentStatuses } from "@/lib/order-groups";
@@ -37,7 +37,11 @@ export async function adminDashboard(ctx: Context, params = new URLSearchParams(
   }
   return requireDb(await ctx.db.rpc("admin_sales_summary", { p_from: range.from, p_to: range.to }));
 }
-export async function adminList(ctx: Context, resource: string, params: URLSearchParams) {
+export async function adminList(
+  ctx: Context,
+  resource: string,
+  params: URLSearchParams,
+): Promise<{ rows: Record<string, unknown>[]; more: boolean }> {
   if (!permissions[resource])
     throw new AppError("NOT_FOUND", "This section couldn’t be found.", 404);
   await requireStaff(ctx, permissions[resource]);
@@ -47,6 +51,45 @@ export async function adminList(ctx: Context, resource: string, params: URLSearc
     .min(0)
     .max(10000)
     .parse(params.get("page") ?? 0);
+  const term = (params.get("q") ?? "")
+    .trim()
+    .replace(/[%_\\,()]/g, "")
+    .slice(0, 100);
+  let range = { from: null as string | null, to: null as string | null };
+  if (params.has("period")) {
+    try {
+      range = salesPeriod(params);
+    } catch {
+      throw new AppError("INVALID_PERIOD", "Choose a valid date range.");
+    }
+  }
+  if (["orders", "prescriptions", "refunds"].includes(resource)) {
+    return requireDb(
+      await ctx.db.rpc("admin_order_records", {
+        p_resource: resource,
+        p_query: term,
+        p_statuses:
+          resource === "orders"
+            ? params.get("view") === "pending"
+              ? unverifiedPaymentStatuses
+              : verifiedPaymentStatuses
+            : null,
+        p_from: range.from,
+        p_to: range.to,
+        p_offset: page * 24,
+      }),
+    );
+  }
+  if (resource === "profiles") {
+    return requireDb(
+      await ctx.db.rpc("admin_customer_directory", {
+        p_query: term,
+        p_from: range.from,
+        p_to: range.to,
+        p_offset: page * 24,
+      }),
+    );
+  }
   const projection: string =
     resource === "blog_posts"
       ? "id,title,slug,summary,category,cover,status,author_name,reviewer_id,reviewed_at,published_at,updated_at"
@@ -58,24 +101,29 @@ export async function adminList(ctx: Context, resource: string, params: URLSearc
   let query = ctx.db
     .from(resource === "products" && params.get("export") !== "1" ? "catalog" : resource)
     .select(projection);
-  if (resource === "orders")
-    query = query
-      .in(
-        "payment_status",
-        params.get("view") === "pending" ? unverifiedPaymentStatuses : verifiedPaymentStatuses,
-      )
-      .order("created_at", { ascending: false });
-  else if (resource === "blog_posts") query = query.order("updated_at", { ascending: false });
+  const dateColumn =
+    resource === "blog_posts" || resource === "products" ? "updated_at" : "created_at";
+  if (
+    ![
+      "categories",
+      "shipping_zones",
+      "settings",
+      "staff_roles",
+      "inventory_batches",
+      "payments",
+    ].includes(resource)
+  ) {
+    if (range.from) query = query.gte(dateColumn, range.from);
+    if (range.to) query = query.lt(dateColumn, range.to);
+  }
+  if (resource === "products" && params.get("category"))
+    query = query.eq("category", params.get("category")!);
+  if (resource === "blog_posts") query = query.order("updated_at", { ascending: false });
   else if (resource !== "settings" && resource !== "staff_roles") query = query.order("id");
   if (params.get("q")) {
-    const term = params
-      .get("q")!
-      .replace(/[%_,()]/g, "")
-      .slice(0, 100);
     if (["products", "profiles", "categories"].includes(resource))
       query = query.ilike("name", `%${term}%`);
     if (resource === "blog_posts") query = query.ilike("title", `%${term}%`);
-    if (resource === "orders") query = query.ilike("reference", `%${term}%`);
   }
   const rows = requireDb(
     await query.range(page * 24, page * 24 + 24).returns<Record<string, unknown>[]>(),
@@ -94,6 +142,70 @@ export async function adminList(ctx: Context, resource: string, params: URLSearc
     more: rows.length > 24,
   };
 }
+
+export async function inviteCustomer(ctx: Context, body: unknown) {
+  const actor = await requireStaff(ctx, ["owner", "admin", "support"]);
+  const input = z
+    .object({
+      name: z.string().trim().min(2).max(100),
+      email: z
+        .string()
+        .trim()
+        .email()
+        .max(180)
+        .transform((value) => value.toLowerCase()),
+      phone: z
+        .string()
+        .trim()
+        .regex(/^(?:\+234|234|0)[789][01]\d{8}$/, "Enter a valid Nigerian phone number."),
+      address: z.string().trim().max(500).default(""),
+      state: z.string().trim().max(80).default(""),
+      lga: z.string().trim().max(120).default(""),
+    })
+    .refine((value) => !value.address || (value.state && value.lga), {
+      message: "Add the state and LGA for this address.",
+    })
+    .parse(body);
+  await rate(ctx, "customer-invite", 10, 3600, actor.id);
+  await rate(ctx, "customer-invite-email", 1, 300, input.email);
+  const { data, error } = await ctx.db.auth.admin.inviteUserByEmail(input.email, {
+    data: { name: input.name, phone: input.phone },
+    redirectTo: `${ctx.origin}/api/auth/callback`,
+  });
+  if (error || !data.user)
+    throw new AppError(
+      "INVITE_FAILED",
+      "We couldn’t send the invitation. Check whether this email already has an account, or try again later.",
+      503,
+    );
+  const saved = await ctx.db
+    .from("profiles")
+    .upsert({ id: data.user.id, name: input.name, phone: input.phone });
+  if (saved.error)
+    throw new AppError(
+      "INVITE_DETAILS_FAILED",
+      "The invitation was sent, but customer details couldn’t be saved. Refresh the customer list before trying again.",
+      503,
+    );
+  if (input.address) {
+    const address = await ctx.db.from("addresses").insert({
+      user_id: data.user.id,
+      name: input.name,
+      phone: input.phone,
+      address: input.address,
+      state: deliveryState(input.state),
+      lga: input.lga,
+    });
+    if (address.error)
+      throw new AppError(
+        "INVITE_ADDRESS_FAILED",
+        "The invitation was sent, but the address couldn’t be saved. The customer can add it after signing in.",
+        503,
+      );
+  }
+  await audit(ctx, actor.id, "customer_invited", "profiles", data.user.id);
+  return { message: "Invitation sent. The customer must verify their email and set a password." };
+}
 export async function adminRecord(ctx: Context, resource: string, id: string) {
   if (!["products", "blog_posts", "categories", "shipping_zones"].includes(resource))
     throw new AppError("NOT_FOUND", "This section couldn’t be found.", 404);
@@ -108,6 +220,34 @@ export async function adminWrite(ctx: Context, resource: string, body: unknown) 
     ctx,
     resource === "blog_posts" ? ["owner", "admin", "editor"] : allowed,
   );
+  return writeAdminRecord(ctx, resource, body, actor);
+}
+
+export async function importProducts(ctx: Context, body: unknown) {
+  const actor = await requireStaff(ctx, ["owner", "admin"]);
+  await rate(ctx, "import", 120, 600, actor.id);
+  const records = z.array(z.unknown()).min(1).max(20).parse(body);
+  const outcomes = [];
+  for (const [index, record] of records.entries()) {
+    try {
+      outcomes.push({
+        row: index + 1,
+        saved: await writeAdminRecord(ctx, "products", record, actor),
+      });
+    } catch (error) {
+      outcomes.push({
+        row: index + 1,
+        error:
+          error instanceof AppError
+            ? error.message
+            : "Check this product’s fields and uploaded photo.",
+      });
+    }
+  }
+  return { outcomes };
+}
+
+async function writeAdminRecord(ctx: Context, resource: string, body: unknown, actor: Identity) {
   const db = ctx.db;
   let id: string | undefined;
   if (resource === "products" || resource === "blog_posts") {

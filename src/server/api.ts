@@ -6,6 +6,7 @@ import { requestContext, rate, requireStaff } from "./session";
 import { authAction, authCallback } from "./auth";
 import { catalog, publicContent, toProduct, type CatalogRow } from "./content";
 import { selectCatalog } from "./catalog-query";
+import { readCheckoutReadiness } from "./checkout-readiness";
 import {
   beginCheckout,
   initializePayment,
@@ -15,7 +16,15 @@ import {
   webhook,
 } from "./payments";
 import { customerAction, customerData, orderDetails } from "./customer";
-import { adminAction, adminList, adminWrite, adminRecord, adminDashboard } from "./admin";
+import {
+  adminAction,
+  adminList,
+  adminWrite,
+  adminRecord,
+  adminDashboard,
+  inviteCustomer,
+  importProducts,
+} from "./admin";
 import { uploadTicket, finalizeUpload } from "./uploads";
 import { runWorker } from "./worker";
 import { readBody } from "./body";
@@ -129,8 +138,13 @@ export async function handleApi(request: Request) {
         result = {
           post: requireDb(await ctx.db.from("blog_posts").select("*").eq("id", id).single()),
         };
+      } else if (path === "admin/checkout-readiness" && method === "GET") {
+        await requireStaff(ctx, ["owner", "admin"]);
+        result = await readCheckoutReadiness(ctx.db);
       } else if (path === "admin/summary" && method === "GET") {
         result = await adminDashboard(ctx, url.searchParams);
+      } else if (path === "admin/customer-invite" && method === "POST") {
+        result = await inviteCustomer(ctx, await body());
       } else if (path === "admin/record" && method === "GET") {
         result = await adminRecord(
           ctx,
@@ -138,28 +152,7 @@ export async function handleApi(request: Request) {
           url.searchParams.get("id") ?? "",
         );
       } else if (path === "admin/product-import" && method === "POST") {
-        await requireStaff(ctx, ["owner", "admin"]);
-        await rate(ctx, "import", 2, 600);
-        const records = z
-          .array(z.unknown())
-          .max(100)
-          .min(1)
-          .parse(await body());
-        const outcomes = [];
-        for (const [index, record] of records.entries()) {
-          try {
-            outcomes.push({ row: index + 1, saved: await adminWrite(ctx, "products", record) });
-          } catch (error) {
-            outcomes.push({
-              row: index + 1,
-              error:
-                error instanceof AppError
-                  ? error.message
-                  : "Check this product’s fields and uploaded photo.",
-            });
-          }
-        }
-        result = { outcomes };
+        result = await importProducts(ctx, await body());
       } else if (path.startsWith("admin/actions/") && method === "POST")
         result = await adminAction(ctx, path.slice(14), await body());
       else if (path === "admin/order" && method === "GET") {

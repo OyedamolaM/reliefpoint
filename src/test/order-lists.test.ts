@@ -39,6 +39,16 @@ function context() {
   };
   const ctx = {
     db: {
+      rpc: async (name: string, params: { p_statuses: string[] }) => {
+        calls.push(["rpc", name, params]);
+        return {
+          data: {
+            rows: rows.filter((row) => params.p_statuses.includes(row.payment_status)),
+            more: false,
+          },
+          error: null,
+        };
+      },
       from: (name: string) => {
         calls.push(["from", name]);
         return q;
@@ -54,9 +64,15 @@ describe("confirmed orders and pending payments", () => {
     expect(data.rows.map((r) => r["payment_status"])).toEqual(
       pending ? ["pending", "review"] : ["paid", "partially_refunded", "refunded"],
     );
-    expect(calls.findIndex((c) => c[0] === "in")).toBeLessThan(
-      calls.findIndex((c) => c[0] === "range"),
-    );
+    expect(calls).toContainEqual([
+      "rpc",
+      "admin_order_records",
+      expect.objectContaining({
+        p_resource: "orders",
+        p_offset: 0,
+        p_statuses: pending ? ["pending", "review"] : ["paid", "partially_refunded", "refunded"],
+      }),
+    ]);
   });
   it.each([false, true])(
     "keeps customer lists scoped to their owner (pending %s)",

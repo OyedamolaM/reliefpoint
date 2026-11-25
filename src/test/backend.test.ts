@@ -67,6 +67,112 @@ async function begin(request: string, quantity = 1) {
   ).rows[0]!.o;
 }
 describe("database migrations and pharmacy transactions", () => {
+  it("searches purchased-item snapshots and customer details with date bounds before pagination", async () => {
+    await db.exec("begin");
+    try {
+      const paid = await begin(crypto.randomUUID());
+      const pending = await begin(crypto.randomUUID());
+      await db.query(
+        `update orders set payment_status='paid',contact=contact||'{"name":"Chisom Buyer","phone":"08098765432"}'::jsonb,created_at='2026-10-31T22:59:00Z' where id=$1`,
+        [paid.id],
+      );
+      await db.query(`update orders set created_at='2026-10-31T23:00:00Z' where id=$1`, [
+        pending.id,
+      ]);
+      await db.query(`update order_items set name='Original Multivitamin Pack' where order_id=$1`, [
+        paid.id,
+      ]);
+      const search = async (
+        query: string,
+        statuses = ["paid"],
+        from: string | null = null,
+        to: string | null = null,
+      ) =>
+        (
+          await db.query<{ result: { rows: any[]; more: boolean } }>(
+            `select admin_order_records('orders',$1,$2,$3,$4,0) result`,
+            [query, statuses, from, to],
+          )
+        ).rows[0]!.result;
+      for (const query of [
+        "Multivitamin",
+        "Chisom",
+        "08098765432",
+        "one@example.com",
+        paid.reference,
+      ]) {
+        expect((await search(query)).rows.map((row) => row.id)).toEqual([paid.id]);
+      }
+      const filtered = await search(
+        "",
+        ["paid", "pending"],
+        "2026-10-30T23:00:00Z",
+        "2026-10-31T23:00:00Z",
+      );
+      expect(filtered.rows.map((row) => row.id)).toEqual([paid.id]);
+      expect(filtered.rows[0]).not.toHaveProperty("guest_hash");
+      expect((await search("", ["pending"])).rows.map((row) => row.id)).toEqual([pending.id]);
+      await db.query(
+        `insert into prescriptions(order_id,path,mime,created_at) values($1,'private/test-search.pdf','application/pdf','2026-10-31T22:59:00Z')`,
+        [paid.id],
+      );
+      const prescriptions = (
+        await db.query<{ result: { rows: any[] } }>(
+          `select admin_order_records('prescriptions','Multivitamin',null,'2026-10-30T23:00:00Z','2026-10-31T23:00:00Z',0) result`,
+        )
+      ).rows[0]!.result;
+      expect(prescriptions.rows).toHaveLength(1);
+      expect(prescriptions.rows[0]).not.toHaveProperty("path");
+      await db.query(
+        `insert into refunds(order_id,amount,reason,actor) values($1,100,'Search fixture',$2)`,
+        [paid.id, owner],
+      );
+      expect(
+        (
+          await db.query<{ result: { rows: any[] } }>(
+            `select admin_order_records('refunds','Chisom') result`,
+          )
+        ).rows[0]!.result.rows,
+      ).toHaveLength(1);
+    } finally {
+      await db.exec("rollback");
+    }
+  });
+
+  it("returns paginated customer emails and addresses only through server-only functions", async () => {
+    await db.exec("begin");
+    try {
+      await db.query(`update profiles set name='Buyer One',phone='08012345678' where id=$1`, [
+        customer,
+      ]);
+      await db.query(
+        `insert into addresses(user_id,name,phone,address,state,lga) values($1,'Buyer One','08012345678','12 Oregun Road','Lagos','Ikeja')`,
+        [customer],
+      );
+      const result = (
+        await db.query<{ result: { rows: any[] } }>(
+          `select admin_customer_directory('one@example.com') result`,
+        )
+      ).rows[0]!.result;
+      expect(result.rows).toHaveLength(1);
+      expect(result.rows[0]).toMatchObject({
+        id: customer,
+        email: "one@example.com",
+        phone: "08012345678",
+      });
+      expect(result.rows[0].addresses[0].address).toBe("12 Oregun Road");
+      expect(result.rows[0]).not.toHaveProperty("sessions_revoked_at");
+    } finally {
+      await db.exec("rollback");
+    }
+    await db.exec("set role authenticated");
+    try {
+      await expect(db.query(`select admin_customer_directory()`)).rejects.toThrow();
+      await expect(db.query(`select admin_order_records('orders')`)).rejects.toThrow();
+    } finally {
+      await db.exec("reset role");
+    }
+  });
   it("keeps remembered MFA server-only and caps grants at 24 hours", async () => {
     await expect(
       db.query(

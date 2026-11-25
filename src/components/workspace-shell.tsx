@@ -90,7 +90,7 @@ export function WorkspaceShell({
               Administration
             </Link>
           )}
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#edf1ff] font-bold text-brand">
               {(account.user?.name || account.user?.email || "R").slice(0, 1).toUpperCase()}
             </span>
@@ -110,15 +110,15 @@ export function WorkspaceShell({
       </aside>
       <div className="lg:pl-64">
         <header className="flex h-20 items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 sm:px-8">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <button
               aria-label="Open navigation"
               onClick={() => setOpen(true)}
-              className="rounded-lg border p-2 lg:hidden"
+              className="shrink-0 rounded-lg border p-2 lg:hidden"
             >
               <Menu size={20} />
             </button>
-            <span className="text-sm text-slate-500">
+            <span className="truncate text-sm text-slate-500">
               {admin ? "Administration" : "My account"}
               <span className="mx-3 text-slate-300">/</span>
               <span className="font-semibold text-slate-800">{title}</span>

@@ -36,6 +36,36 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe("server-backed checkout", () => {
+  it("keeps delivery details visible when checkout is blocked before payment review", async () => {
+    const request = vi.fn(async (path: string) =>
+      path.includes("zones")
+        ? Response.json({ zones: [deliveryZone] })
+        : Response.json(
+            {
+              error: {
+                code: "CHECKOUT_UNAVAILABLE",
+                message:
+                  "Online checkout is temporarily unavailable. Your basket is saved. Please contact our pharmacy team.",
+              },
+            },
+            { status: 503 },
+          ),
+    );
+    vi.stubGlobal("fetch", request);
+    render(<LiveCheckout cart={basket} onBack={() => {}} />);
+    fireEvent.change(screen.getByLabelText("Full name"), { target: { value: "Amina Test" } });
+    fireEvent.change(screen.getByLabelText("State / FCT"), { target: { value: "Lagos" } });
+    await screen.findByRole("option", { name: "Ikeja — Oregun" });
+    fireEvent.change(screen.getByLabelText("Delivery area"), {
+      target: { value: deliveryZone.id },
+    });
+    fireEvent.submit(screen.getByRole("button", { name: "Continue to payment" }).closest("form")!);
+    await screen.findByRole("alert");
+    expect(screen.getByLabelText("Full name")).toHaveValue("Amina Test");
+    expect(screen.getByLabelText("Delivery area")).toHaveValue(deliveryZone.id);
+    expect(screen.queryByRole("button", { name: /^Pay / })).not.toBeInTheDocument();
+    expect(request.mock.calls.some(([path]) => path.includes("checkout/start"))).toBe(false);
+  });
   it("shows all states with no configured zones and prevents unavailable checkout", async () => {
     const request = vi.fn(async (_path: string) => Response.json({ zones: [] }));
     vi.stubGlobal("fetch", request);
@@ -127,44 +157,41 @@ describe("server-backed checkout", () => {
       deal: false,
       live: true,
     };
-    const request = vi
-      .fn()
-      .mockImplementation(async (path: string) =>
-        path.includes("zones")
+    const request = vi.fn().mockImplementation(async (path: string) =>
+      path.includes("zones")
+        ? Response.json({
+            zones: [
+              {
+                id: zone,
+                state: "Lagos",
+                lga: "Ikeja",
+                area: "",
+                fee_kobo: 200000,
+                estimate: "Owner estimate",
+              },
+            ],
+          })
+        : path.includes("checkout/quote")
           ? Response.json({
-              zones: [
-                {
-                  id: zone,
-                  state: "Lagos",
-                  lga: "Ikeja",
-                  area: "",
-                  fee_kobo: 200000,
-                  estimate: "Owner estimate",
-                },
-              ],
+              quote: {
+                subtotal: 100000,
+                delivery: 200000,
+                processing: 14721,
+                total: 314721,
+                prescription: false,
+                eta: "Owner estimate",
+              },
             })
-          : path.includes("checkout/quote")
-            ? Response.json({
-                quote: {
-                  subtotal: 100000,
-                  delivery: 200000,
-                  processing: 14721,
-                  total: 314721,
-                  prescription: false,
-                  eta: "Owner estimate",
+          : Response.json(
+              {
+                error: {
+                  code: "PAYMENTS_UNAVAILABLE",
+                  message: "Online payment isn’t available yet. Please contact our pharmacy team.",
                 },
-              })
-            : Response.json(
-                {
-                  error: {
-                    code: "PAYMENTS_UNAVAILABLE",
-                    message:
-                      "Online payment isn’t available yet. Please contact our pharmacy team.",
-                  },
-                },
-                { status: 503 },
-              ),
-      );
+              },
+              { status: 503 },
+            ),
+    );
     vi.stubGlobal("fetch", request);
     render(<LiveCheckout cart={[{ product, quantity: 1 }]} onBack={() => {}} />);
     fireEvent.change(screen.getByLabelText("Full name"), { target: { value: "Amina Test" } });

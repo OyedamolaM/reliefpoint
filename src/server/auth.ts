@@ -211,11 +211,13 @@ export async function authCallback(ctx: Context) {
   const code = url.searchParams.get("code");
   const hash = url.searchParams.get("token_hash");
   const isRecovery = !!hash && url.searchParams.get("type") === "recovery";
-  if (!code && !isRecovery)
+  const isInvite = !!hash && url.searchParams.get("type") === "invite";
+  if (!code && !isRecovery && !isInvite)
     throw new AppError("LINK_INVALID", "This link is incomplete. Please request a new one.");
-  const { error } = isRecovery
-    ? await ctx.auth.auth.verifyOtp({ token_hash: hash!, type: "recovery" })
-    : await ctx.auth.auth.exchangeCodeForSession(code!);
+  const { error } =
+    isRecovery || isInvite
+      ? await ctx.auth.auth.verifyOtp({ token_hash: hash!, type: isInvite ? "invite" : "recovery" })
+      : await ctx.auth.auth.exchangeCodeForSession(code!);
   if (error)
     throw new AppError(
       "LINK_EXPIRED",
@@ -231,6 +233,7 @@ export async function authCallback(ctx: Context) {
   );
   const recovery =
     isRecovery ||
+    isInvite ||
     (Array.isArray(claims.amr) &&
       claims.amr.some((m: { method: string }) => m.method === "recovery"));
   if (recovery) {

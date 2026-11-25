@@ -1,6 +1,7 @@
+import { useIsMobile } from "@/hooks/use-mobile";
 import { hasMfaAccess } from "@/lib/session-policy";
 import { uploadFile } from "@/lib/upload";
-import { useState, type FormEvent } from "react";
+import { useState, useEffect, useId, useRef, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
@@ -8,6 +9,8 @@ import { api, send, notifyError } from "@/lib/api";
 import { slugify, roles, productSchema, type StaffRole } from "@/lib/contracts";
 import { nigeriaDate, salesPeriod } from "@/lib/sales-period";
 import { nigerianStates, deliveryState } from "@/lib/nigeria";
+import type { CheckoutReadiness } from "@/lib/checkout-status";
+import { importProductBatches } from "@/lib/product-import";
 import { useAccount } from "./auth-provider";
 import { AuthForm, Field, Pagination, Retry, AuthenticatorPanel } from "./account-page";
 import { SiteShell } from "./site-shell";
@@ -24,6 +27,9 @@ import {
   Settings,
   ArrowUpRight,
   Plus,
+  CalendarDays,
+  ImagePlus,
+  Upload,
 } from "lucide-react";
 import { WorkspaceShell, WorkspaceModal, EmptyWorkspace } from "./workspace-shell";
 
@@ -82,41 +88,99 @@ export function PhotoUpload({
   value,
   onChange,
   label = "Photo",
+  onUploadingChange,
 }: {
   value: string;
   onChange: (value: string) => void;
   label?: string;
+  onUploadingChange?: (uploading: boolean) => void;
 }) {
+  const id = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState("");
+  useEffect(() => {
+    if (!file || !["image/jpeg", "image/png"].includes(file.type)) {
+      setPreview("");
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
   return (
-    <div className="space-y-3">
-      <label className="block text-sm font-semibold">
+    <div className="min-w-0 space-y-2">
+      <label htmlFor={id} className="block text-sm font-semibold">
         {label}
-        <input
-          type="file"
-          accept="image/jpeg,image/png"
-          className="mt-2 block w-full text-sm"
-          disabled={busy}
-          onChange={async (e) => {
-            const file = e.target.files?.[0];
-            if (!file) return;
-            setBusy(true);
-            try {
-              const result = await uploadFile<{ images: { medium: string } }>("media", file);
-              onChange(result.images.medium);
-              toast.success("Photo uploaded.");
-            } catch (error) {
-              notifyError(error);
-            } finally {
-              setBusy(false);
-              e.target.value = "";
-            }
-          }}
-        />
       </label>
-      {busy && <p role="status">Uploading photo…</p>}
-      {value && (
-        <img src={value} alt="Uploaded preview" className="h-32 w-48 rounded-lg object-cover" />
+      <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+        <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-dashed border-brand/25 bg-white text-brand/60">
+          {preview || value ? (
+            <img
+              src={preview || value}
+              alt={label + " preview"}
+              className="h-full w-full object-contain"
+            />
+          ) : (
+            <ImagePlus size={28} aria-hidden="true" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1 space-y-2">
+          <input
+            ref={inputRef}
+            id={id}
+            type="file"
+            accept="image/jpeg,image/png"
+            className="sr-only"
+            disabled={busy}
+            aria-describedby={id + "-info"}
+            onChange={async (e) => {
+              const input = e.currentTarget;
+              const selected = input.files?.[0];
+              if (!selected) return;
+              setFile(selected);
+              setBusy(true);
+              onUploadingChange?.(true);
+              try {
+                const result = await uploadFile<{ images: { medium: string } }>("media", selected);
+                onChange(result.images.medium);
+                toast.success("Photo uploaded.");
+              } catch (error) {
+                setFile(null);
+                setPreview("");
+                notifyError(error);
+              } finally {
+                setBusy(false);
+                onUploadingChange?.(false);
+                input.value = "";
+              }
+            }}
+          />
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => inputRef.current?.click()}
+            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-brand/20 bg-white px-3 py-2 text-sm font-semibold text-brand hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand disabled:cursor-wait disabled:opacity-60"
+          >
+            <Upload size={15} aria-hidden="true" />{" "}
+            {busy ? "Uploading…" : value ? "Change photo" : "Choose photo"}
+          </button>
+          <p id={id + "-info"} className="truncate text-xs text-slate-500" title={file?.name}>
+            {file?.name || (value ? "Photo uploaded" : "No photo chosen")}
+          </p>
+          <p className="text-xs text-slate-500">JPEG or PNG · Up to 10 MB</p>
+        </div>
+      </div>
+      {busy && (
+        <div
+          role="progressbar"
+          aria-label={"Uploading " + label.toLowerCase()}
+          aria-valuetext="Uploading and processing photo"
+          className="h-1.5 overflow-hidden rounded-full bg-blue-100"
+        >
+          <div className="h-full w-2/3 animate-pulse rounded-full bg-brand motion-reduce:animate-none" />
+        </div>
       )}
     </div>
   );
@@ -133,10 +197,11 @@ export function AdminPage() {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<any>(null);
   const [orderId, setOrderId] = useState("");
+  const [listFilter, setListFilter] = useState("period=all");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [salesFilter, setSalesFilter] = useState(
     () => `period=month&month=${nigeriaDate().slice(0, 7)}`,
   );
-  const [period, setPeriod] = useState("month");
   const salesRange = salesPeriod(new URLSearchParams(salesFilter));
   const displaySalesDate = (date: string | number) =>
     new Intl.DateTimeFormat("en-NG", { dateStyle: "medium", timeZone: "Africa/Lagos" }).format(
@@ -169,14 +234,16 @@ export function AdminPage() {
     "profiles",
     "orders",
     "pending_orders",
+    "prescriptions",
+    "refunds",
     "blog_posts",
   ].includes(active);
   const enabled = !!user && hasMfaAccess(user) && accessible.some((s) => s.key === active);
   const data = useQuery({
-    queryKey: ["private", "admin", active, page, query, user?.id],
+    queryKey: ["private", "admin", active, page, query, user?.id, listFilter, categoryFilter],
     queryFn: () =>
       api<{ rows: any[]; more: boolean }>(
-        `admin/${active === "pending_orders" ? "orders" : active}?page=${page}&q=${encodeURIComponent(query)}${active === "pending_orders" ? "&view=pending" : ""}`,
+        `admin/${active === "pending_orders" ? "orders" : active}?page=${page}&q=${encodeURIComponent(query)}${active === "pending_orders" ? "&view=pending" : ""}${listFilter === "period=all" ? "" : `&${listFilter}`}${active === "products" && categoryFilter ? `&category=${encodeURIComponent(categoryFilter)}` : ""}`,
       ),
     enabled,
     retry: false,
@@ -299,94 +366,18 @@ export function AdminPage() {
             </div>
           )}
           {group === "overview" && user.roles.some((r) => ["owner", "admin"].includes(r)) && (
-            <form
-              className="mb-6 rounded-2xl border border-slate-200 bg-white p-5"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const values = new FormData(e.currentTarget);
-                const params = new URLSearchParams();
-                values.forEach((value, key) => params.set(key, String(value)));
-                try {
-                  salesPeriod(params);
-                  setSalesFilter(params.toString());
-                } catch {
-                  toast.error("Choose a valid sales period and date range.");
-                }
-              }}
+            <SalesDateFilter
+              filter={salesFilter}
+              onApply={setSalesFilter}
+              busy={summary.isFetching}
             >
-              <div className="flex flex-wrap items-end gap-3">
-                <label className="min-w-36 text-sm font-semibold">
-                  Sales period
-                  <select
-                    aria-label="Sales period"
-                    name="period"
-                    className="commerce-input mt-2"
-                    value={period}
-                    onChange={(e) => setPeriod(e.target.value)}
-                  >
-                    <option value="week">Week</option>
-                    <option value="month">Month</option>
-                    <option value="custom">Custom period</option>
-                    <option value="all">All time</option>
-                  </select>
-                </label>
-                {period === "month" && (
-                  <Field
-                    label="Month"
-                    name="month"
-                    type="month"
-                    defaultValue={nigeriaDate().slice(0, 7)}
-                    min="2000-01"
-                    max="2100-12"
-                    required
-                  />
-                )}
-                {period === "week" && (
-                  <Field
-                    label="Week containing"
-                    name="week"
-                    type="date"
-                    defaultValue={nigeriaDate()}
-                    min="2000-01-01"
-                    max="2100-12-31"
-                    required
-                  />
-                )}
-                {period === "custom" && (
-                  <>
-                    <Field
-                      label="From"
-                      name="from"
-                      type="date"
-                      min="2000-01-01"
-                      max="2100-12-31"
-                      required
-                    />
-                    <Field
-                      label="To"
-                      name="to"
-                      type="date"
-                      min="2000-01-01"
-                      max="2100-12-31"
-                      required
-                    />
-                  </>
-                )}
-                <button className="action-button" disabled={summary.isFetching}>
-                  Apply
-                </button>
-              </div>
               <p className="mt-3 text-sm font-semibold">
                 Showing:{" "}
                 {salesRange.from && salesRange.to
                   ? `${displaySalesDate(salesRange.from)} – ${displaySalesDate(new Date(salesRange.to).getTime() - 1)}`
                   : "All time"}
               </p>
-              <p className="mt-1 text-xs text-slate-500">
-                Sales by verified payment date, Nigeria time. Review and payment queues show current
-                totals.
-              </p>
-            </form>
+            </SalesDateFilter>
           )}
           {group === "overview" && summary.error && <Retry error={summary.error} retry={refresh} />}
           {group === "overview" && summary.isLoading && (
@@ -395,7 +386,7 @@ export function AdminPage() {
             </p>
           )}
           {group === "overview" && summary.data && (
-            <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="mb-8 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
               {summaryCards.map((card) => (
                 <button
                   key={card.key}
@@ -406,10 +397,12 @@ export function AdminPage() {
                     );
                     setSection(card.section);
                   }}
-                  className="rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-sm hover:border-brand/30"
+                  className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm hover:border-brand/30 sm:p-6"
                 >
-                  <p className="text-sm text-slate-500">{card.label}</p>
-                  <strong className="mt-3 block text-3xl font-bold">
+                  <p className="min-h-9 text-xs text-slate-500 sm:min-h-0 sm:text-sm">
+                    {card.label}
+                  </p>
+                  <strong className="mt-2 block break-words text-xl font-bold sm:mt-3 sm:text-3xl">
                     {card.key === "paid_kobo"
                       ? formatNaira((summary.data[card.key] || 0) / 100)
                       : summary.data[card.key] || 0}
@@ -423,22 +416,25 @@ export function AdminPage() {
             </div>
           )}
           {group === "overview" && (
-            <section className="rounded-2xl border border-slate-200 bg-white p-6">
+            <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
               <h2 className="mb-5 text-lg font-bold">Quick actions</h2>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
                 {navigation
                   .filter((g) => g.key !== "overview")
                   .map(({ key, label, icon: Icon }) => (
                     <button
                       key={key}
                       onClick={() => navigate(key)}
-                      className="flex items-center gap-4 rounded-xl border border-slate-100 p-4 text-left hover:bg-slate-50"
+                      className="relative flex min-w-0 flex-col items-start gap-3 rounded-xl border border-slate-100 p-3 text-left hover:bg-slate-50 sm:flex-row sm:items-center sm:gap-4 sm:p-4"
                     >
-                      <span className="rounded-xl bg-blue-50 p-3 text-brand">
+                      <span className="shrink-0 rounded-xl bg-blue-50 p-2.5 text-brand sm:p-3">
                         <Icon size={20} />
                       </span>
                       <span className="flex-1 text-sm font-semibold">{label}</span>
-                      <ArrowUpRight size={16} />
+                      <ArrowUpRight
+                        size={16}
+                        className="absolute right-3 top-3 sm:static sm:shrink-0"
+                      />
                     </button>
                   ))}
               </div>
@@ -472,14 +468,72 @@ export function AdminPage() {
                   <h2 className="text-2xl font-bold">
                     {sections.find((s) => s.key === active)?.label}
                   </h2>
-                  {editable && (
-                    <button className="action-button" onClick={() => setEditing({})}>
-                      <Plus size={16} className="mr-2" /> Add new
-                    </button>
-                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {active === "products" &&
+                      user.roles.some((r) => ["owner", "admin"].includes(r)) && (
+                        <button
+                          type="button"
+                          className="flex items-center gap-2 rounded-lg border border-brand/20 px-4 py-2.5 text-sm font-semibold text-brand"
+                          onClick={() => setBulk(true)}
+                        >
+                          <Upload size={16} /> Import products
+                        </button>
+                      )}
+                    {(editable || active === "profiles") && (
+                      <button className="action-button" onClick={() => setEditing({})}>
+                        <Plus size={16} className="mr-2" />{" "}
+                        {active === "profiles" ? "Add customer" : "Add new"}
+                      </button>
+                    )}
+                  </div>
                 </div>
+                {[
+                  "orders",
+                  "pending_orders",
+                  "prescriptions",
+                  "refunds",
+                  "profiles",
+                  "products",
+                  "blog_posts",
+                  "contact_messages",
+                  "notification_outbox",
+                  "webhook_events",
+                  "audit_log",
+                ].includes(active) && (
+                  <SalesDateFilter
+                    filter={listFilter}
+                    onApply={(filter) => {
+                      setPage(0);
+                      setListFilter(filter);
+                    }}
+                    busy={data.isFetching}
+                    modalOnly
+                    title="Filter by date"
+                  >
+                    <p className="mt-2 text-xs text-slate-500">
+                      {listFilter === "period=all"
+                        ? "All dates"
+                        : `Filtered by ${new URLSearchParams(listFilter).get("period")}`}
+                      {active === "products" || active === "blog_posts" ? " · Last updated" : ""}
+                    </p>
+                  </SalesDateFilter>
+                )}
+                {active === "products" && categoryFilter && (
+                  <p className="mb-3 text-sm">
+                    Category: <strong>{categoryFilter}</strong>{" "}
+                    <button
+                      className="ml-2 underline"
+                      onClick={() => {
+                        setPage(0);
+                        setCategoryFilter("");
+                      }}
+                    >
+                      Clear category
+                    </button>
+                  </p>
+                )}
                 <form
-                  className="mb-5 flex gap-2"
+                  className="mb-5 flex flex-wrap gap-2"
                   onSubmit={(e) => {
                     e.preventDefault();
                     setPage(0);
@@ -490,8 +544,12 @@ export function AdminPage() {
                     <>
                       <input
                         aria-label="Search records"
-                        className="commerce-input"
-                        placeholder="Search"
+                        className="commerce-input min-w-0 flex-1 basis-40"
+                        placeholder={
+                          ["orders", "pending_orders", "prescriptions", "refunds"].includes(active)
+                            ? "Search item, customer, email or reference"
+                            : "Search"
+                        }
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                       />
@@ -504,14 +562,6 @@ export function AdminPage() {
                 </form>
                 {data.error && <Retry error={data.error} retry={refresh} />}{" "}
                 {data.isLoading && <p>Loading…</p>}
-                {active === "products" && (
-                  <button
-                    onClick={() => setBulk(true)}
-                    className="mb-5 text-sm font-semibold text-brand"
-                  >
-                    Import / export products
-                  </button>
-                )}
                 {active === "contact_messages" && (
                   <p className="mb-5 text-sm text-slate-500">
                     Messages submitted through your Contact page.
@@ -524,6 +574,8 @@ export function AdminPage() {
                 )}
                 {active === "settings" && data.data?.rows[0] ? (
                   <SettingsForm value={data.data.rows[0]} onSaved={refresh} />
+                ) : active === "profiles" ? (
+                  <CustomerTable rows={data.data?.rows ?? []} />
                 ) : (
                   <div className="space-y-3">
                     {data.data?.rows.map((row, index) => (
@@ -559,6 +611,34 @@ export function AdminPage() {
                             </strong>
                           </div>
                           <div className="flex gap-3 text-sm">
+                            {active === "categories" && (
+                              <>
+                                <button
+                                  className="font-semibold text-brand"
+                                  onClick={() => {
+                                    setSection("products");
+                                    setPage(0);
+                                    setQuery("");
+                                    setSearch("");
+                                    setEditing({ category: row.name });
+                                  }}
+                                >
+                                  Add product
+                                </button>
+                                <button
+                                  className="underline"
+                                  onClick={() => {
+                                    setSection("products");
+                                    setPage(0);
+                                    setQuery("");
+                                    setSearch("");
+                                    setCategoryFilter(row.name);
+                                  }}
+                                >
+                                  View products
+                                </button>
+                              </>
+                            )}
                             {["products", "categories", "shipping_zones", "blog_posts"].includes(
                               active,
                             ) &&
@@ -812,18 +892,37 @@ export function AdminPage() {
                 <WorkspaceModal
                   open={!!editing}
                   onClose={() => setEditing(null)}
-                  title={editing?.id ? "Edit record" : "Add record"}
+                  title={
+                    active === "profiles"
+                      ? "Add customer"
+                      : active === "products"
+                        ? editing?.id
+                          ? "Edit product"
+                          : "Add products"
+                        : editing?.id
+                          ? "Edit record"
+                          : "Add record"
+                  }
                 >
-                  {editing && (
-                    <AdminEditor
-                      key={active + (editing.id || "new")}
-                      resource={active}
-                      row={editing}
+                  {editing && active === "profiles" ? (
+                    <CustomerInvite
                       onSaved={() => {
                         setEditing(null);
                         refresh();
                       }}
                     />
+                  ) : (
+                    editing && (
+                      <AdminEditor
+                        key={active + (editing.id || "new")}
+                        resource={active}
+                        row={editing}
+                        onSaved={() => {
+                          setEditing(null);
+                          refresh();
+                        }}
+                      />
+                    )
                   )}
                 </WorkspaceModal>
                 <WorkspaceModal
@@ -861,6 +960,9 @@ export function AdminPage() {
 function BulkProducts({ onSaved }: { onSaved: () => void }) {
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<{ row: number; error?: string }[]>([]);
+  const [importProgress, setImportProgress] = useState<{ completed: number; total: number } | null>(
+    null,
+  );
   return (
     <div className="mb-6 space-y-3 rounded-xl bg-secondary p-4">
       <div className="flex flex-wrap items-center gap-5">
@@ -908,8 +1010,8 @@ function BulkProducts({ onSaved }: { onSaved: () => void }) {
             onChange={async (e) => {
               const file = e.target.files?.[0];
               if (!file) return;
-              if (file.size > 1024 * 1024) {
-                toast.error("Choose an import file up to 1 MB.");
+              if (file.size > 10 * 1024 * 1024) {
+                toast.error("Choose an import file up to 10 MB.");
                 return;
               }
               setBusy(true);
@@ -923,16 +1025,24 @@ function BulkProducts({ onSaved }: { onSaved: () => void }) {
                   );
                   return;
                 }
-                const result = await send<{ outcomes: { row: number; error?: string }[] }>(
-                  "admin/product-import",
+                if (!Array.isArray(records)) {
+                  toast.error("Choose a JSON file containing a list of products.");
+                  return;
+                }
+                const outcomes = await importProductBatches(
                   records,
+                  (batch) => send("admin/product-import", batch),
+                  (outcomes, total) => {
+                    setReport(outcomes);
+                    setImportProgress({ completed: outcomes.length, total });
+                  },
                 );
-                setReport(result.outcomes);
-                const saved = result.outcomes.filter((r) => !r.error).length;
+                const saved = outcomes.filter((r) => !r.error).length;
                 toast.success(`${saved} products imported.`);
                 onSaved();
               } catch (error) {
                 notifyError(error);
+                onSaved();
               } finally {
                 setBusy(false);
                 e.target.value = "";
@@ -941,9 +1051,22 @@ function BulkProducts({ onSaved }: { onSaved: () => void }) {
           />
         </label>
       </div>
+      {importProgress && (
+        <div className="space-y-2">
+          <p role="status" className="text-sm">
+            {importProgress.completed} of {importProgress.total} products checked
+          </p>
+          <progress
+            aria-label="Product import"
+            className="h-2 w-full accent-brand"
+            max={importProgress.total || 1}
+            value={importProgress.completed}
+          />
+        </div>
+      )}
       <p className="text-xs">
-        Up to 100 products per import. Use the export format; photos must already be uploaded
-        through this store.
+        JSON files up to 10 MB. Products import in batches of 20. Use the export format with photos
+        already uploaded through this store.
       </p>
       {report
         .filter((r) => r.error)
@@ -969,11 +1092,33 @@ function AdminEditor({
   const [blocks, setBlocks] = useState<any[]>(row.blocks ?? [{ type: "paragraph", text: "" }]);
   const [priceError, setPriceError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [photoUploading, setPhotoUploading] = useState(false);
   const product = resource === "products",
     blog = resource === "blog_posts";
+  const categories = useQuery({
+    queryKey: ["private", "product-category-options"],
+    enabled: product,
+    staleTime: 0,
+    retry: false,
+    queryFn: async () => {
+      const names = new Set<string>();
+      let page = 0;
+      let more: boolean;
+      do {
+        const result = await api<{ rows: { name: string }[]; more: boolean }>(
+          `admin/categories?page=${page}`,
+        );
+        result.rows.forEach((category) => names.add(category.name));
+        more = result.more;
+        page += 1;
+      } while (more);
+      return [...names].sort((a, b) => a.localeCompare(b));
+    },
+  });
   const save = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setPriceError("");
+    if (photoUploading) return;
     if ((product || blog) && !photo) {
       toast.error(
         product ? "Upload a product photo before saving." : "Upload a cover photo before saving.",
@@ -1037,7 +1182,10 @@ function AdminEditor({
     }
   };
   return (
-    <form className="space-y-5" onSubmit={save}>
+    <form
+      className={product ? "grid items-start gap-5 md:grid-cols-2" : "space-y-5"}
+      onSubmit={save}
+    >
       {(product || blog) && (
         <>
           <Field
@@ -1061,11 +1209,50 @@ function AdminEditor({
               pattern="[a-z0-9]+(-[a-z0-9]+)*"
             />
           )}
-          <Field label="Category" name="category" defaultValue={row.category ?? ""} required />
+          {product ? (
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold">
+                Category
+                <select
+                  aria-label="Category"
+                  name="category"
+                  className="commerce-input mt-2"
+                  defaultValue={row.category ?? ""}
+                  disabled={categories.isPending || !!categories.error}
+                  required
+                >
+                  <option value="">
+                    {categories.isPending ? "Loading categories…" : "Select category"}
+                  </option>
+                  {[
+                    ...new Set([
+                      ...(categories.data ?? []),
+                      ...(row.category ? [row.category as string] : []),
+                    ]),
+                  ].map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {categories.error && (
+                <Retry error={categories.error} retry={() => void categories.refetch()} />
+              )}
+              {categories.isSuccess && !categories.data.length && (
+                <p className="text-sm text-slate-500">
+                  Create a category in Products → Categories first.
+                </p>
+              )}
+            </div>
+          ) : (
+            <Field label="Category" name="category" defaultValue={row.category ?? ""} required />
+          )}
           <PhotoUpload
             value={photo}
             onChange={setPhoto}
             label={blog ? "Cover photo" : "Product photo"}
+            onUploadingChange={setPhotoUploading}
           />
           {blog && (
             <Field
@@ -1089,12 +1276,12 @@ function AdminEditor({
             defaultValue={row.price_kobo ? row.price_kobo / 100 : ""}
             required
           />
-          <details className="rounded-xl border border-slate-200 p-4">
+          <details className="rounded-xl border border-slate-200 p-4 md:col-span-2">
             <summary className="cursor-pointer text-sm font-semibold">
               More details (optional)
             </summary>
-            <div className="mt-5 space-y-5">
-              <div className="grid gap-5 sm:grid-cols-2">
+            <div className="mt-5 grid gap-5 md:grid-cols-2">
+              <div className="grid gap-5 sm:grid-cols-2 md:col-span-2">
                 <div>
                   <Field
                     label="Discount price (₦)"
@@ -1158,7 +1345,7 @@ function AdminEditor({
               ))}
             </div>
           </details>
-          <div className="flex flex-wrap gap-5">
+          <div className="flex flex-wrap gap-5 md:col-span-2">
             {["active", "prescription", "deal"].map((key) => (
               <label key={key} className="flex items-center gap-2 text-sm capitalize">
                 <input name={key} type="checkbox" defaultChecked={row[key] ?? false} />
@@ -1371,15 +1558,163 @@ function AdminEditor({
           </label>
         </>
       )}
-      <button className="action-button" disabled={busy}>
+      <button
+        className="action-button justify-self-start"
+        disabled={
+          busy || photoUploading || (product && (categories.isPending || !!categories.error))
+        }
+      >
         {busy ? "Saving…" : "Save changes"}
+      </button>
+      {busy && (
+        <div className={product ? "space-y-2 md:col-span-2" : "space-y-2"}>
+          <p role="status" className="text-xs text-slate-500">
+            Saving changes…
+          </p>
+          <div
+            role="progressbar"
+            aria-label="Saving changes"
+            className="h-1.5 overflow-hidden rounded-full bg-blue-100"
+          >
+            <div className="h-full w-2/3 animate-pulse rounded-full bg-brand motion-reduce:animate-none" />
+          </div>
+        </div>
+      )}
+    </form>
+  );
+}
+function CustomerTable({ rows }: { rows: any[] }) {
+  if (!rows.length) return <EmptyWorkspace title="No customers found" />;
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-200">
+      <table className="w-full min-w-[780px] text-left text-sm">
+        <caption className="sr-only">Customers and contact details</caption>
+        <thead className="bg-slate-50 text-xs text-slate-500">
+          <tr>
+            {[
+              "Customer",
+              "Email address",
+              "Phone number",
+              "Delivery addresses",
+              "Account",
+              "Joined",
+            ].map((name) => (
+              <th key={name} scope="col" className="px-4 py-3 font-semibold">
+                {name}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {rows.map((row) => (
+            <tr key={row.id} className="align-top">
+              <td className="px-4 py-4 font-semibold">{row.name || "Name not provided"}</td>
+              <td className="px-4 py-4">
+                {row.email ? (
+                  <a className="text-brand hover:underline" href={`mailto:${row.email}`}>
+                    {row.email}
+                  </a>
+                ) : (
+                  "Not provided"
+                )}
+              </td>
+              <td className="whitespace-nowrap px-4 py-4">{row.phone || "Not provided"}</td>
+              <td className="min-w-52 px-4 py-4">
+                {row.addresses?.length
+                  ? row.addresses.map((address: any) => (
+                      <p key={address.id} className="mb-2 last:mb-0">
+                        {[address.address, address.lga, address.state].filter(Boolean).join(", ")}
+                      </p>
+                    ))
+                  : row.last_delivery?.address
+                    ? [row.last_delivery.address, row.last_delivery.lga, row.last_delivery.state]
+                        .filter(Boolean)
+                        .join(", ")
+                    : "No delivery address"}
+              </td>
+              <td className="px-4 py-4">
+                <span
+                  className={`whitespace-nowrap rounded-full px-2 py-1 text-xs ${row.email_confirmed_at ? "bg-blue-50 text-brand" : "bg-amber-50 text-amber-800"}`}
+                >
+                  {row.email_confirmed_at ? "Email verified" : "Awaiting verification"}
+                </span>
+              </td>
+              <td className="whitespace-nowrap px-4 py-4">
+                {new Intl.DateTimeFormat("en-NG", {
+                  dateStyle: "medium",
+                  timeZone: "Africa/Lagos",
+                }).format(new Date(row.created_at))}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CustomerInvite({ onSaved }: { onSaved: () => void }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <form
+      className="grid gap-5 md:grid-cols-2"
+      onInvalidCapture={() =>
+        toast.error("Check the highlighted customer details.", { id: "customer-validation" })
+      }
+      onSubmit={async (event) => {
+        event.preventDefault();
+        const values = Object.fromEntries(new FormData(event.currentTarget));
+        setBusy(true);
+        try {
+          const result = await send<{ message: string }>("admin/customer-invite", values);
+          toast.success(result.message);
+          onSaved();
+        } catch (error) {
+          notifyError(error);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <Field label="Full name" name="name" required minLength={2} maxLength={100} />
+      <Field label="Email address" name="email" type="email" required maxLength={180} />
+      <Field
+        label="Nigerian phone number"
+        name="phone"
+        type="tel"
+        required
+        pattern="(\+234|234|0)[789][01][0-9]{8}"
+      />
+      <Field label="Delivery address (optional)" name="address" maxLength={500} />
+      <label className="block text-sm font-semibold">
+        State / FCT
+        <select name="state" className="commerce-input mt-2" defaultValue="">
+          <option value="">Select state</option>
+          {nigerianStates.map((state) => (
+            <option key={state}>{state}</option>
+          ))}
+        </select>
+      </label>
+      <Field label="LGA / area (optional)" name="lga" maxLength={120} />
+      <p className="text-sm text-slate-500 md:col-span-2">
+        An email invitation lets the customer verify their email and set their own password.
+      </p>
+      <button className="action-button justify-self-start" disabled={busy}>
+        {busy ? "Sending invitation…" : "Add customer & send invitation"}
       </button>
     </form>
   );
 }
+
 function SettingsForm({ value, onSaved }: { value: any; onSaved: () => void }) {
   const [logo, setLogo] = useState(value.public_data?.pcn_logo ?? "");
   const [busy, setBusy] = useState(false);
+  const readiness = useQuery({
+    queryKey: ["private", "admin-checkout-readiness"],
+    queryFn: () => api<CheckoutReadiness>("admin/checkout-readiness"),
+    staleTime: 60000,
+    retry: false,
+  });
   return (
     <form
       className="space-y-5"
@@ -1407,6 +1742,7 @@ function SettingsForm({ value, onSaved }: { value: any; onSaved: () => void }) {
             ),
           });
           toast.success("Business settings saved.");
+          void readiness.refetch();
           onSaved();
         } catch (error) {
           notifyError(error);
@@ -1415,6 +1751,58 @@ function SettingsForm({ value, onSaved }: { value: any; onSaved: () => void }) {
         }
       }}
     >
+      <section className="rounded-xl border border-slate-200 p-4" aria-label="Checkout status">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="font-bold">Checkout status</h3>
+          <button
+            type="button"
+            className="text-sm font-semibold text-brand underline"
+            disabled={readiness.isFetching}
+            onClick={() => void readiness.refetch()}
+          >
+            Recheck
+          </button>
+        </div>
+        {readiness.isPending && (
+          <p role="status" className="mt-3 text-sm">
+            Checking checkout…
+          </p>
+        )}
+        {readiness.error && (
+          <Retry error={readiness.error} retry={() => void readiness.refetch()} />
+        )}
+        {readiness.data && (
+          <>
+            <p className="mt-3 text-sm font-semibold">
+              {readiness.data.available ? "Ready for checkout" : "Checkout is blocked"}
+              {readiness.data.mode !== "unconfigured"
+                ? ` · Paystack ${readiness.data.mode} mode`
+                : ""}
+            </p>
+            {readiness.data.available && (
+              <p className="mt-2 text-sm text-slate-500">
+                {readiness.data.mode === "test"
+                  ? "Test payments only. No live charges."
+                  : "Configuration checks passed. Verify email delivery and a controlled payment/refund before opening unrestricted purchases."}
+              </p>
+            )}
+            {!readiness.data.available && (
+              <ul className="mt-3 space-y-2 text-sm" aria-label="Checkout requirements">
+                {readiness.data.checks
+                  .filter((check) => !check.ready)
+                  .map((check) => (
+                    <li key={check.key} className="flex gap-2">
+                      <span aria-hidden="true" className="text-amber-700">
+                        •
+                      </span>
+                      <span>{check.label}</span>
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </>
+        )}
+      </section>
       <p className="rounded-xl bg-secondary p-4 text-sm">
         Live checkout requires completed business information, approved policies and launch
         approval.
@@ -1498,5 +1886,137 @@ function SettingsForm({ value, onSaved }: { value: any; onSaved: () => void }) {
         {busy ? "Saving…" : "Save settings"}
       </button>
     </form>
+  );
+}
+
+function SalesDateFilter({
+  filter,
+  onApply,
+  busy,
+  children,
+  modalOnly = false,
+  title = "Filter sales by date",
+}: {
+  filter: string;
+  onApply: (filter: string) => void;
+  busy: boolean;
+  children?: import("react").ReactNode;
+  modalOnly?: boolean;
+  title?: string;
+}) {
+  const mobile = useIsMobile();
+  const [open, setOpen] = useState(false);
+  const applied = new URLSearchParams(filter);
+  const [period, setPeriod] = useState(applied.get("period") || "month");
+  const form = (
+    <form
+      className="space-y-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const values = new FormData(e.currentTarget);
+        const params = new URLSearchParams();
+        values.forEach((value, key) => params.set(key, String(value)));
+        try {
+          salesPeriod(params);
+          onApply(params.toString());
+          setOpen(false);
+        } catch {
+          toast.error("Choose a valid sales period and date range.");
+        }
+      }}
+    >
+      <div className="grid gap-4 sm:flex sm:flex-wrap sm:items-end sm:gap-3">
+        <label className="min-w-36 text-sm font-semibold">
+          Sales period
+          <select
+            aria-label="Sales period"
+            name="period"
+            className="commerce-input mt-2"
+            value={period}
+            onChange={(e) => setPeriod(e.target.value)}
+          >
+            <option value="week">Week</option>
+            <option value="month">Month</option>
+            <option value="custom">Custom period</option>
+            <option value="all">All time</option>
+          </select>
+        </label>
+        {period === "month" && (
+          <Field
+            label="Month"
+            name="month"
+            type="month"
+            defaultValue={applied.get("month") || nigeriaDate().slice(0, 7)}
+            min="2000-01"
+            max="2100-12"
+            required
+          />
+        )}
+        {period === "week" && (
+          <Field
+            label="Week containing"
+            name="week"
+            type="date"
+            defaultValue={applied.get("week") || nigeriaDate()}
+            min="2000-01-01"
+            max="2100-12-31"
+            required
+          />
+        )}
+        {period === "custom" && (
+          <>
+            <Field
+              label="From"
+              name="from"
+              defaultValue={applied.get("from") || ""}
+              type="date"
+              min="2000-01-01"
+              max="2100-12-31"
+              required
+            />
+            <Field
+              label="To"
+              name="to"
+              defaultValue={applied.get("to") || ""}
+              type="date"
+              min="2000-01-01"
+              max="2100-12-31"
+              required
+            />
+          </>
+        )}
+        <button className="action-button" disabled={busy}>
+          Apply
+        </button>
+      </div>
+    </form>
+  );
+  return (
+    <section
+      aria-label="Sales date filter"
+      className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"
+    >
+      {mobile || modalOnly ? (
+        <>
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            onClick={() => {
+              setPeriod(applied.get("period") || "month");
+              setOpen(true);
+            }}
+            className="flex min-h-11 items-center gap-2 rounded-xl border border-brand/20 bg-blue-50 px-4 py-2 text-sm font-semibold text-brand"
+          >
+            <CalendarDays size={18} aria-hidden="true" /> Date filter
+          </button>
+          <WorkspaceModal open={open} onClose={() => setOpen(false)} title={title}>
+            {form}
+          </WorkspaceModal>
+        </>
+      ) : (
+        form
+      )}
+      {children}
+    </section>
   );
 }
