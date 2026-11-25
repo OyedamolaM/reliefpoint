@@ -4,6 +4,8 @@ The backend is implemented on `feat/reliefpoint-backend`. This document does not
 
 ## Configure
 
+For localhost credentials, staff/customer sign-in and redirect settings, see [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md).
+
 1. Copy `.env.example` to `.env.local`. Set the exact trusted `APP_ORIGIN` (HTTPS in production), Supabase URL/anon/service-role keys, independently generated session/worker secrets, Paystack secret key and Brevo API key. None uses a `VITE_` prefix. Never put the service-role key in client code.
 2. Apply the SQL files in `supabase/migrations` **in filename order**, using the Supabase SQL editor or your migration runner. Back up an existing database first. These migrations create new tables; do not run against an unrelated project.
 3. In Supabase Auth, enable email confirmation, email/password login and TOTP MFA. Disable anonymous sign-in. Set Site URL to `APP_ORIGIN`, allow `${APP_ORIGIN}/api/auth/callback` and `${APP_ORIGIN}/api/auth/callback?recovery=1`, and remove unused redirect URLs. Turn on leaked-password protection if available on your plan. Require at least 10 characters. The app enforces its own idle/absolute session limits independently of Supabase subscription features.

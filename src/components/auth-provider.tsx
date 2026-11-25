@@ -1,4 +1,12 @@
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+  type ReactNode,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, send, ClientError } from "@/lib/api";
 import { toast } from "sonner";
@@ -34,29 +42,62 @@ export function AuthProvider({ children, enabled }: { children: ReactNode; enabl
   const [user, setUser] = useState<AccountUser | null>(null);
   const [loading, setLoading] = useState(enabled);
   const query = useQueryClient();
-  const refresh = useCallback(async () => {
+  const version = useRef(0);
+  const checking = useRef<{ version: number; promise: Promise<void> } | null>(null);
+  const failureNotified = useRef(false);
+  const accountChannel = useRef<BroadcastChannel | null>(null);
+  const refresh = useCallback(async (): Promise<void> => {
     if (!enabled) {
       setLoading(false);
       return;
     }
-    try {
-      const result = await api<{ user: AccountUser | null }>("auth/session");
-      setUser(result.user);
-    } catch {
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [enabled]);
+    const requestVersion = version.current;
+    if (checking.current?.version === requestVersion) return checking.current.promise;
+    const flight = { version: requestVersion, promise: Promise.resolve() };
+    const promise = (async () => {
+      try {
+        const result = await api<{ user: AccountUser | null }>("auth/session");
+        if (version.current !== requestVersion) return;
+        failureNotified.current = false;
+        setUser(result.user);
+        if (!result.user) query.removeQueries({ queryKey: ["private"] });
+      } catch (error) {
+        if (version.current !== requestVersion) return;
+        if (error instanceof ClientError && error.status === 401) {
+          setUser(null);
+          query.removeQueries({ queryKey: ["private"] });
+        } else if (!failureNotified.current) {
+          failureNotified.current = true;
+          toast.error("We couldn’t check your session. Please try again.", {
+            id: "session-check",
+            action: {
+              label: "Retry",
+              onClick: () => {
+                void refresh();
+              },
+            },
+          });
+        }
+      } finally {
+        if (version.current === requestVersion) setLoading(false);
+        if (checking.current === flight) checking.current = null;
+      }
+    })();
+    flight.promise = promise;
+    checking.current = flight;
+    return promise;
+  }, [enabled, query]);
   useEffect(() => {
     void refresh();
     const handle = () => {
+      version.current += 1;
       query.removeQueries({ queryKey: ["private"] });
       void refresh();
     };
     let channel: BroadcastChannel | undefined;
     if (typeof BroadcastChannel !== "undefined") {
       channel = new BroadcastChannel("reliefpoint-account");
+      accountChannel.current = channel;
       channel.onmessage = handle;
     }
     const focus = () => void refresh();
@@ -64,6 +105,7 @@ export function AuthProvider({ children, enabled }: { children: ReactNode; enabl
     window.addEventListener("reliefpoint:mfa-required", handle);
     return () => {
       channel?.close();
+      if (accountChannel.current === channel) accountChannel.current = null;
       window.removeEventListener("focus", focus);
       window.removeEventListener("reliefpoint:mfa-required", handle);
     };
@@ -75,10 +117,11 @@ export function AuthProvider({ children, enabled }: { children: ReactNode; enabl
     let timer: ReturnType<typeof setTimeout>;
     let disposed = false;
     const expire = async () => {
+      const requestVersion = version.current;
       // Another tab may have been active. Let the server decide before ending access.
       try {
         const result = await api<{ user: AccountUser | null }>("auth/session");
-        if (disposed) return;
+        if (disposed || version.current !== requestVersion) return;
         if (!result.user) {
           rejected();
           return;
@@ -86,7 +129,7 @@ export function AuthProvider({ children, enabled }: { children: ReactNode; enabl
         setUser(result.user);
         timer = setTimeout(expire, timeout);
       } catch (error) {
-        if (disposed) return;
+        if (disposed || version.current !== requestVersion) return;
         if (error instanceof ClientError && error.status === 401) rejected();
         else timer = setTimeout(expire, 60000);
       }
@@ -101,6 +144,7 @@ export function AuthProvider({ children, enabled }: { children: ReactNode; enabl
       }
     };
     const rejected = () => {
+      version.current += 1;
       setUser(null);
       query.removeQueries({ queryKey: ["private"] });
       toast.info("Your session has ended. Please sign in again.", { id: "session-expired" });
@@ -132,25 +176,20 @@ export function AuthProvider({ children, enabled }: { children: ReactNode; enabl
     return () => clearTimeout(timer);
   }, [user?.id, user?.mfaVerified, user?.mfaExpiresAt, query, refresh]);
   const changed = async () => {
+    version.current += 1;
     query.removeQueries({ queryKey: ["private"] });
     await refresh();
-    if (typeof BroadcastChannel !== "undefined") {
-      const channel = new BroadcastChannel("reliefpoint-account");
-      channel.postMessage("changed");
-      channel.close();
-    }
+    accountChannel.current?.postMessage("changed");
   };
   const logout = async (all = false) => {
+    version.current += 1;
     try {
       await send(all ? "auth/signout-all" : "auth/signout", {});
     } finally {
+      version.current += 1;
       setUser(null);
       query.removeQueries({ queryKey: ["private"] });
-      if (typeof BroadcastChannel !== "undefined") {
-        const channel = new BroadcastChannel("reliefpoint-account");
-        channel.postMessage("changed");
-        channel.close();
-      }
+      accountChannel.current?.postMessage("changed");
     }
   };
   return (

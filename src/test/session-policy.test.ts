@@ -5,6 +5,11 @@ import { identity, requireStaff, type Context } from "@/server/session";
 import { authAction } from "@/server/auth";
 import { rememberedMfa } from "@/server/mfa-browser";
 import { hourMs } from "@/lib/session-policy";
+import {
+  AuthApiError,
+  AuthRetryableFetchError,
+  AuthSessionMissingError,
+} from "@supabase/supabase-js";
 
 const now = new Date("2026-11-25T12:00:00Z");
 const userId = "00000000-0000-4000-8000-000000000001";
@@ -133,6 +138,51 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("session lifetime and remembered MFA", () => {
+  it.each([500, 503, 429])(
+    "does not mistake a provider failure (%s) for signed out",
+    async (status) => {
+      const { ctx, auth } = setup();
+      vi.spyOn(ctx.auth.auth, "getUser").mockResolvedValueOnce({
+        data: { user: null },
+        error: new AuthApiError("Private provider message", status, undefined),
+      });
+      await expect(identity(ctx, true)).rejects.toMatchObject({
+        code: "AUTH_UNAVAILABLE",
+        status: 503,
+      });
+      expect(auth.signOut).not.toHaveBeenCalled();
+    },
+  );
+  it("preserves the session when a token refresh has a temporary network failure", async () => {
+    const { ctx, auth } = setup();
+    vi.spyOn(ctx.auth.auth, "getSession").mockResolvedValueOnce({
+      data: { session: null },
+      error: new AuthRetryableFetchError("Network interrupted", 0),
+    });
+    await expect(identity(ctx)).rejects.toMatchObject({ code: "AUTH_UNAVAILABLE", status: 503 });
+    expect(auth.signOut).not.toHaveBeenCalled();
+  });
+  it("still treats missing and revoked credentials as signed out", async () => {
+    const { ctx } = setup();
+    vi.spyOn(ctx.auth.auth, "getUser").mockResolvedValue({
+      data: { user: null },
+      error: new AuthSessionMissingError(),
+    });
+    expect(await identity(ctx, true)).toBeNull();
+    await expect(identity(ctx)).rejects.toMatchObject({ status: 401 });
+  });
+  it.each(["bad_jwt", "user_banned", "session_not_found"])(
+    "still rejects invalid credentials (%s)",
+    async (code) => {
+      const { ctx } = setup();
+      vi.spyOn(ctx.auth.auth, "getUser").mockResolvedValue({
+        data: { user: null },
+        error: new AuthApiError("Rejected", 403, code),
+      });
+      expect(await identity(ctx, true)).toBeNull();
+      await expect(identity(ctx)).rejects.toMatchObject({ status: 401 });
+    },
+  );
   it("accepts remembered verification after a new password sign-in without rewriting assurance claims", async () => {
     const { ctx } = setup(true, "aal1");
     expect(await requireStaff(ctx, ["admin"])).toMatchObject({ aal: "aal1", mfaVerified: true });

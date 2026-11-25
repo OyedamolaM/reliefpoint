@@ -119,7 +119,8 @@ export async function adminList(
   if (resource === "products" && params.get("category"))
     query = query.eq("category", params.get("category")!);
   if (resource === "blog_posts") query = query.order("updated_at", { ascending: false });
-  else if (resource !== "settings" && resource !== "staff_roles") query = query.order("id");
+  else if (resource === "staff_roles") query = query.order("user_id").order("role");
+  else if (resource !== "settings") query = query.order("id");
   if (params.get("q")) {
     if (["products", "profiles", "categories"].includes(resource))
       query = query.ilike("name", `%${term}%`);
@@ -128,6 +129,46 @@ export async function adminList(
   const rows = requireDb(
     await query.range(page * 24, page * 24 + 24).returns<Record<string, unknown>[]>(),
   );
+  if (resource === "staff_roles") {
+    const visible = rows.slice(0, 24);
+    const ids = [...new Set(visible.map((row) => String(row["user_id"])))];
+    if (!ids.length) return { rows: [], more: false };
+    const [profileResult, users] = await Promise.all([
+      ctx.db.from("profiles").select("id,name,phone").in("id", ids),
+      Promise.all(
+        ids.map(async (id) => {
+          const { data, error } = await ctx.db.auth.admin.getUserById(id);
+          if (error || !data.user)
+            throw new AppError(
+              "STAFF_DETAILS_UNAVAILABLE",
+              "We couldn’t load staff details. Please try again.",
+              503,
+            );
+          return {
+            id,
+            email: data.user.email ?? "",
+            name: String(data.user.user_metadata["name"] ?? ""),
+          };
+        }),
+      ),
+    ]);
+    const profiles = new Map(requireDb(profileResult).map((profile) => [profile.id, profile]));
+    const accounts = new Map(users.map((user) => [user.id, user]));
+    return {
+      rows: visible.map((row) => {
+        const id = String(row["user_id"]),
+          profile = profiles.get(id),
+          account = accounts.get(id);
+        return {
+          ...row,
+          name: profile?.name || account?.name || "",
+          email: account?.email || "",
+          phone: profile?.phone || "",
+        };
+      }),
+      more: rows.length > 24,
+    };
+  }
   // File paths are accessed only through the audited prescription-view endpoint.
   return {
     rows: rows

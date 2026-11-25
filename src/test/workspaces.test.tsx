@@ -48,6 +48,26 @@ vi.mock("@/lib/api", () => ({
   }),
   api: async (path: string) => {
     state.calls.push(path);
+    if (path.startsWith("admin/staff_roles?"))
+      return {
+        rows: [
+          {
+            user_id: "first",
+            role: "admin",
+            name: "First Administrator",
+            email: "first@example.com",
+            phone: "08012345678",
+          },
+          {
+            user_id: "second",
+            role: "admin",
+            name: "Second Administrator",
+            email: "second@example.com",
+            phone: "",
+          },
+        ],
+        more: false,
+      };
     if (path.startsWith("admin/profiles?"))
       return {
         rows: [
@@ -119,6 +139,22 @@ beforeEach(() => {
   state.factors = [{ id: "factor-1", name: "ReliefPoint" }];
 });
 describe("pharmacy workspaces", () => {
+  it("identifies staff by name and email with separately labelled roles", async () => {
+    render(<AdminPage />);
+    fireEvent.click(
+      within(screen.getByRole("navigation", { name: "Administration" })).getByRole("button", {
+        name: "Settings",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Staff access" }));
+    expect(await screen.findByText("First Administrator")).toBeInTheDocument();
+    expect(screen.getByText("Second Administrator")).toBeInTheDocument();
+    expect(screen.getByText("first@example.com")).toBeInTheDocument();
+    expect(screen.getByText("second@example.com")).toBeInTheDocument();
+    expect(screen.getAllByText("Role: admin")).toHaveLength(2);
+    expect(screen.getByText("Phone: 08012345678")).toBeInTheDocument();
+    expect(screen.queryByText("Phone:")).not.toBeInTheDocument();
+  });
   it("opens a product form directly from a category with that category selected", async () => {
     render(<AdminPage />);
     fireEvent.click(

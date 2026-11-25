@@ -593,21 +593,23 @@ export function AdminPage() {
                               />
                             )}
                             <strong className="break-words">
-                              {row.title ??
-                                row.name ??
-                                row.reference ??
-                                row.subject ??
-                                row.email ??
-                                row.lot ??
-                                row.action ??
-                                row.role ??
-                                (active === "shipping_zones"
-                                  ? [row.state, row.lga, row.area].filter(Boolean).join(" · ")
-                                  : active === "prescriptions"
-                                    ? "Prescription"
-                                    : active === "refunds"
-                                      ? "Refund request"
-                                      : "Activity")}
+                              {active === "staff_roles"
+                                ? row.name || row.email || "Staff member"
+                                : (row.title ??
+                                  row.name ??
+                                  row.reference ??
+                                  row.subject ??
+                                  row.email ??
+                                  row.lot ??
+                                  row.action ??
+                                  row.role ??
+                                  (active === "shipping_zones"
+                                    ? [row.state, row.lga, row.area].filter(Boolean).join(" · ")
+                                    : active === "prescriptions"
+                                      ? "Prescription"
+                                      : active === "refunds"
+                                        ? "Refund request"
+                                        : "Activity"))}
                             </strong>
                           </div>
                           <div className="flex gap-3 text-sm">
@@ -671,6 +673,9 @@ export function AdminPage() {
                             )}
                           </div>
                         </div>
+                        {active === "staff_roles" && row.email && row.name && (
+                          <p className="mt-1 break-all text-sm text-slate-500">{row.email}</p>
+                        )}
                         <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
                           {[
                             "status",
@@ -691,7 +696,11 @@ export function AdminPage() {
                             "attempts",
                             "reason",
                           ]
-                            .filter((key) => row[key] !== undefined)
+                            .filter(
+                              (key) =>
+                                row[key] !== undefined &&
+                                !(active === "staff_roles" && key === "phone" && !row[key]),
+                            )
                             .map((key) => (
                               <span
                                 key={key}
@@ -706,7 +715,9 @@ export function AdminPage() {
                                 <span className="inline-block rounded-full bg-slate-50 px-2.5 py-1 text-xs capitalize">
                                   {key === "available"
                                     ? `${row[key]} in stock`
-                                    : String(row[key]).replaceAll("_", " ")}
+                                    : active === "staff_roles" && ["role", "phone"].includes(key)
+                                      ? `${key === "role" ? "Role" : "Phone"}: ${String(row[key]).replaceAll("_", " ")}`
+                                      : String(row[key]).replaceAll("_", " ")}
                                 </span>
                               </span>
                             ))}

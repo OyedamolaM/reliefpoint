@@ -6,6 +6,34 @@ import { AppError, checkDb, requireDb } from "./errors";
 import type { StaffRole } from "@/lib/contracts";
 import { absoluteSessionMs, inactivityMs } from "@/lib/session-policy";
 import { rememberedMfa } from "./mfa-browser";
+import { isAuthSessionMissingError, type AuthError } from "@supabase/supabase-js";
+
+function checkAuthAvailability(ctx: Context, error: AuthError | null) {
+  if (!error) return;
+  const rejected =
+    isAuthSessionMissingError(error) ||
+    error.status === 401 ||
+    [
+      "bad_jwt",
+      "session_not_found",
+      "session_expired",
+      "user_not_found",
+      "user_banned",
+      "no_authorization",
+      "unexpected_audience",
+      "refresh_token_not_found",
+      "refresh_token_already_used",
+    ].includes(error.code ?? "");
+  if (!rejected) {
+    // A provider outage must not send SDK cookie deletions back to the browser.
+    ctx.discardAuthCookieWrites?.();
+    throw new AppError(
+      "AUTH_UNAVAILABLE",
+      "We couldn’t check your session. Please try again in a moment.",
+      503,
+    );
+  }
+}
 
 export function requestContext(request: Request) {
   const env = config();
@@ -64,6 +92,11 @@ export function requestContext(request: Request) {
   const clearAuthCookies = () => {
     for (const entry of cookies) if (entry.name.startsWith("sb-")) setCookie(entry.name, "", 0);
   };
+  const discardAuthCookieWrites = () => {
+    const keep = headers.getSetCookie().filter((entry) => !entry.startsWith("sb-"));
+    headers.delete("Set-Cookie");
+    keep.forEach((entry) => headers.append("Set-Cookie", entry));
+  };
   return {
     request,
     headers,
@@ -71,6 +104,7 @@ export function requestContext(request: Request) {
     cookie,
     setCookie,
     clearAuthCookies,
+    discardAuthCookieWrites,
     hash,
     guestHash: hash(guest),
     db: database(),
@@ -95,6 +129,7 @@ export async function identity(ctx: Context, optional = false): Promise<Identity
     data: { user },
     error,
   } = await ctx.auth.auth.getUser();
+  checkAuthAvailability(ctx, error);
   if (error || !user) {
     if (optional) return null;
     throw new AppError("SIGN_IN_REQUIRED", "Please sign in to continue.", 401);
@@ -102,7 +137,9 @@ export async function identity(ctx: Context, optional = false): Promise<Identity
   // getUser validates the token with Auth before its session_id/aal claims are read.
   const {
     data: { session },
+    error: sessionError,
   } = await ctx.auth.auth.getSession();
+  checkAuthAvailability(ctx, sessionError ?? null);
   if (!session)
     throw new AppError("SESSION_EXPIRED", "Your session has expired. Please sign in again.", 401);
   const claims = JSON.parse(
