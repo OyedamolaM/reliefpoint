@@ -5,6 +5,7 @@ import { audit, requireStaff, type Context } from "./session";
 import { assertMedia } from "./uploads";
 import { invalidatePublic } from "./public-cache";
 import { verifiedPaymentStatuses, unverifiedPaymentStatuses } from "@/lib/order-groups";
+import { salesPeriod } from "@/lib/sales-period";
 
 const permissions: Record<string, StaffRole[]> = {
   products: ["owner", "admin", "pharmacist"],
@@ -25,28 +26,15 @@ const permissions: Record<string, StaffRole[]> = {
   notification_outbox: ["owner", "admin"],
   webhook_events: ["owner", "admin"],
 };
-export async function adminDashboard(ctx: Context) {
+export async function adminDashboard(ctx: Context, params = new URLSearchParams()) {
   await requireStaff(ctx, ["owner", "admin"]);
-  const [base, confirmed, pending] = await Promise.all([
-    ctx.db.rpc("admin_summary"),
-    ctx.db
-      .from("orders")
-      .select("id", { count: "exact", head: true })
-      .in("payment_status", verifiedPaymentStatuses),
-    ctx.db
-      .from("orders")
-      .select("id", { count: "exact", head: true })
-      .in("payment_status", unverifiedPaymentStatuses),
-  ]);
-  const summary = requireDb(base);
-  checkDb(confirmed);
-  checkDb(pending);
-  return {
-    paid_kobo: summary.paid_kobo,
-    confirmed_orders: confirmed.count ?? 0,
-    pending_payments: pending.count ?? 0,
-    prescription_queue: summary.prescription_queue,
-  };
+  let range;
+  try {
+    range = salesPeriod(params);
+  } catch {
+    throw new AppError("INVALID_PERIOD", "Choose a valid sales period and date range.");
+  }
+  return requireDb(await ctx.db.rpc("admin_sales_summary", { p_from: range.from, p_to: range.to }));
 }
 export async function adminList(ctx: Context, resource: string, params: URLSearchParams) {
   if (!permissions[resource])

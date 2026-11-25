@@ -13,6 +13,7 @@ type CatalogRow = {
   detail: string;
   category: string;
   price_kobo: number;
+  regular_price_kobo?: number;
   image: string;
   image_alt: string;
   directions?: string;
@@ -29,6 +30,9 @@ export function toProduct(row: CatalogRow): Product {
     detail: row.detail,
     category: row.category,
     price: Number(row.price_kobo) / 100,
+    ...(Number(row.regular_price_kobo) > Number(row.price_kobo)
+      ? { originalPrice: Number(row.regular_price_kobo) / 100 }
+      : {}),
     image: row.image,
     imageAlt: row.image_alt,
     ...(row.directions ? { directions: row.directions } : {}),
@@ -53,7 +57,9 @@ async function readCatalog(params: URLSearchParams) {
   const sort = params.get("sort");
   let query = database()
     .from("catalog")
-    .select("id,name,slug,detail,category,price_kobo,image,image_alt,prescription,deal,available")
+    .select(
+      "id,name,slug,detail,category,price_kobo,regular_price_kobo,image,image_alt,prescription,deal,available",
+    )
     .eq("active", true);
   const search = params.get("q")?.trim().slice(0, 100);
   if (search) query = query.textSearch("fts", search, { type: "websearch", config: "simple" });

@@ -4,13 +4,15 @@ import { config } from "./config";
 import { database } from "./db";
 import { AppError, checkDb, requireDb } from "./errors";
 import type { StaffRole } from "@/lib/contracts";
+import { absoluteSessionMs, inactivityMs } from "@/lib/session-policy";
+import { rememberedMfa } from "./mfa-browser";
 
 export function requestContext(request: Request) {
   const env = config();
   const headers = new Headers({ "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
   const cookies = parseCookieHeader(request.headers.get("cookie") ?? "");
   const secure = env.APP_ORIGIN.startsWith("https://");
-  const setCookie = (name: string, value: string, maxAge = 604800) =>
+  const setCookie = (name: string, value: string, maxAge = 604800) => {
     headers.append(
       "Set-Cookie",
       serializeCookieHeader(name, value, {
@@ -21,6 +23,10 @@ export function requestContext(request: Request) {
         maxAge,
       }),
     );
+    const existing = cookies.find((entry) => entry.name === name);
+    if (existing) existing.value = value;
+    else cookies.push({ name, value });
+  };
   const auth = createServerClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
     cookieOptions: { httpOnly: true, secure, sameSite: "lax", path: "/" },
     cookies: {
@@ -81,6 +87,8 @@ export type Identity = {
   aal: string;
   sessionId: string;
   recovery: boolean;
+  mfaVerified: boolean;
+  mfaExpiresAt: string | null;
 };
 export async function identity(ctx: Context, optional = false): Promise<Identity | null> {
   const {
@@ -128,12 +136,11 @@ export async function identity(ctx: Context, optional = false): Promise<Identity
         await ctx.db.from("app_sessions").select("*").eq("id", sessionId).single(),
       );
   }
-  const idle = roleList.length ? 15 * 60000 : 30 * 60000;
-  const absolute = roleList.length ? 12 * 3600000 : 7 * 86400000;
+  const idle = inactivityMs(roleList.length > 0);
   if (
     record.revoked ||
-    Date.now() - Date.parse(record.last_seen) > idle ||
-    Date.now() - Date.parse(record.created_at) > absolute
+    Date.now() - Date.parse(record.last_seen) >= idle ||
+    Date.now() - Date.parse(record.created_at) >= absoluteSessionMs
   ) {
     checkDb(await ctx.db.from("app_sessions").update({ revoked: true }).eq("id", sessionId));
     await ctx.auth.auth.signOut({ scope: "local" });
@@ -160,6 +167,9 @@ export async function identity(ctx: Context, optional = false): Promise<Identity
     await ctx.auth.auth.signOut({ scope: "local" });
     throw new AppError("SESSION_EXPIRED", "Your session has ended. Please sign in again.", 401);
   }
+  const mfaExpiresAt = record.recovery
+    ? null
+    : await rememberedMfa(ctx, user, profile?.sessions_revoked_at);
   return {
     id: user.id,
     email: user.email ?? "",
@@ -169,13 +179,15 @@ export async function identity(ctx: Context, optional = false): Promise<Identity
     aal: String(claims.aal),
     sessionId,
     recovery: !!record.recovery,
+    mfaVerified: mfaExpiresAt !== null,
+    mfaExpiresAt,
   };
 }
 export async function requireStaff(ctx: Context, roles: StaffRole[]): Promise<Identity> {
   const user = (await identity(ctx))!;
   if (!user.roles.some((role) => roles.includes(role)))
     throw new AppError("FORBIDDEN", "You don’t have access to this action.", 403);
-  if (user.aal !== "aal2")
+  if (!user.mfaVerified)
     throw new AppError("MFA_REQUIRED", "Verify your authenticator code to continue.", 403);
   return user;
 }

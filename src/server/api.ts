@@ -71,7 +71,7 @@ export async function handleApi(request: Request) {
                 await ctx.db
                   .from("catalog")
                   .select(
-                    "id,name,slug,detail,category,price_kobo,image,image_alt,directions,storage,prescription,deal,available",
+                    "id,name,slug,detail,category,price_kobo,regular_price_kobo,image,image_alt,directions,storage,prescription,deal,available",
                   )
                   .eq("active", true)
                   .in("id", input.ids),
@@ -126,7 +126,7 @@ export async function handleApi(request: Request) {
           post: requireDb(await ctx.db.from("blog_posts").select("*").eq("id", id).single()),
         };
       } else if (path === "admin/summary" && method === "GET") {
-        result = await adminDashboard(ctx);
+        result = await adminDashboard(ctx, url.searchParams);
       } else if (path === "admin/record" && method === "GET") {
         result = await adminRecord(
           ctx,

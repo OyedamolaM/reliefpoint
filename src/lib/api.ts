@@ -31,6 +31,8 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
     });
     const payload = await response.json();
     if (!response.ok) {
+      if (payload.error?.code === "MFA_REQUIRED" && typeof window !== "undefined")
+        window.dispatchEvent(new Event("reliefpoint:mfa-required"));
       if (response.status === 401 && path !== "auth/signin" && typeof window !== "undefined")
         window.dispatchEvent(new Event("reliefpoint:session-expired"));
       throw new ClientError(

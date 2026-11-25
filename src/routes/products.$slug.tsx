@@ -41,6 +41,9 @@ function Page() {
           <h1 className="my-4 text-3xl font-bold">{product.name}</h1>
           <p>{product.detail}</p>
           <p className="my-6 text-2xl font-bold">{formatNaira(product.price)}</p>
+          {product.originalPrice && (
+            <del className="text-sm text-slate-500">{formatNaira(product.originalPrice)}</del>
+          )}
           {product.prescription && (
             <p className="mb-4 text-sm">
               Prescription required. Pharmacist approval before dispatch.
@@ -59,11 +62,11 @@ function Page() {
           <div className="mt-8 space-y-5">
             <h2 className="font-bold">Directions</h2>
             <p className="leading-7">
-              {product.directions ?? "Follow the product label and your pharmacist’s advice."}
+              {product.directions || "Follow the product label and your pharmacist’s advice."}
             </p>
             <h2 className="font-bold">Storage</h2>
             <p className="leading-7">
-              {product.storage ??
+              {product.storage ||
                 "Keep in the original packaging, away from children. Follow the storage conditions on the pack."}
             </p>
             <a

@@ -330,6 +330,9 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
                 <small>{p.category}</small>
               </span>
               <strong>{formatNaira(p.price)}</strong>
+              {p.originalPrice && (
+                <del className="ml-2 text-sm text-slate-500">{formatNaira(p.originalPrice)}</del>
+              )}
             </button>
           ))}
           <button type="submit" className="all-search-results">
@@ -1251,6 +1254,9 @@ function RetailProductCard({ product: p }: { product: Product }) {
         </h3>
         <span className="product-detail">{p.detail.split("·")[0]}</span>
         <strong className="product-price">{formatNaira(p.price)}</strong>
+        {p.originalPrice && (
+          <del className="text-sm text-slate-500">{formatNaira(p.originalPrice)}</del>
+        )}
         {p.inStock ? (
           <button className="product-add-button" onClick={() => shop.add(p)}>
             <ShoppingBag size={16} />

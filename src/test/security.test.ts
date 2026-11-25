@@ -41,6 +41,7 @@ describe("server security boundaries", () => {
       }),
     );
     ctx.setCookie("session-check", "opaque");
+    ctx.setCookie("rp-mfa", "opaque-mfa-proof", 86400);
     ctx.clearAuthCookies();
     const cookies = ctx.headers.getSetCookie();
     expect(
@@ -52,6 +53,10 @@ describe("server security boundaries", () => {
       cookies.some((c) => c.startsWith("sb-project-auth-token=") && c.includes("Max-Age=0")),
     ).toBe(true);
     expect(cookies.join("")).not.toContain("test-service-key-long");
+    expect(cookies.find((cookie) => cookie.startsWith("rp-mfa="))).toMatch(
+      /Max-Age=86400.*HttpOnly.*Secure.*SameSite=Lax/,
+    );
+    expect(cookies.find((cookie) => cookie.startsWith("rp-mfa="))).not.toContain("Domain=");
   });
   it("rejects cross-site writes before authentication or database work", async () => {
     environment();

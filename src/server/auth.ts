@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { AppError, checkDb } from "./errors";
 import { identity, rate, type Context } from "./session";
+import { rememberMfa, revokeRememberedMfa } from "./mfa-browser";
 const credentials = z.object({
   email: z.string().email().max(180),
   password: z.string().min(10).max(128),
@@ -76,13 +77,15 @@ export async function authAction(ctx: Context, action: string, body: unknown) {
     try {
       const user = (await identity(ctx))!;
 
-      if (action === "signout-all")
+      if (action === "signout-all") {
         checkDb(
           await ctx.db
             .from("profiles")
             .update({ sessions_revoked_at: new Date().toISOString() })
             .eq("id", user.id),
         );
+        await revokeRememberedMfa(ctx, user.id);
+      }
       checkDb(
         await ctx.db
           .from("app_sessions")
@@ -142,11 +145,20 @@ export async function authAction(ctx: Context, action: string, body: unknown) {
         .update({ sessions_revoked_at: new Date().toISOString() })
         .eq("id", user.id),
     );
+    await revokeRememberedMfa(ctx, user.id);
     await ctx.auth.auth.signOut({ scope: "global" });
     return { message: "Your password has been updated. Please sign in again." };
   }
   if (action === "mfa-enroll") {
-    const { data: factors } = await ctx.auth.auth.mfa.listFactors();
+    await rate(ctx, "mfa-enroll", 5, 900, user.id);
+    const { data: factors, error: factorsError } = await ctx.auth.auth.mfa.listFactors();
+    if (factorsError)
+      throw new AppError("MFA_FAILED", "We couldn’t load your authenticator. Please try again.");
+    if (factors?.totp.some((factor) => factor.status === "verified"))
+      throw new AppError(
+        "MFA_ALREADY_ENROLLED",
+        "Your authenticator is already set up. Enter its current code to continue.",
+      );
     for (const factor of factors?.all ?? [])
       if (factor.status === "unverified") await ctx.auth.auth.mfa.unenroll({ factorId: factor.id });
     const { data, error } = await ctx.auth.auth.mfa.enroll({
@@ -171,6 +183,11 @@ export async function authAction(ctx: Context, action: string, body: unknown) {
     };
   }
   if (action === "mfa-verify") {
+    if (user.recovery)
+      throw new AppError(
+        "PASSWORD_RESET_REQUIRED",
+        "Finish resetting your password, then sign in to verify your authenticator.",
+      );
     const input = z
       .object({ id: z.string().uuid(), code: z.string().regex(/^\d{6}$/) })
       .parse(body);
@@ -184,6 +201,7 @@ export async function authAction(ctx: Context, action: string, body: unknown) {
         "MFA_INVALID",
         "That code didn’t work. Enter the current code from your authenticator.",
       );
+    await rememberMfa(ctx, user.id, input.id);
     return { user: await identity(ctx), message: "Your identity has been verified." };
   }
   throw new AppError("NOT_FOUND", "This action isn’t available.", 404);
@@ -215,8 +233,10 @@ export async function authCallback(ctx: Context) {
     isRecovery ||
     (Array.isArray(claims.amr) &&
       claims.amr.some((m: { method: string }) => m.method === "recovery"));
-  if (recovery)
+  if (recovery) {
     checkDb(await ctx.db.from("app_sessions").update({ recovery: true }).eq("id", user.sessionId));
+    await revokeRememberedMfa(ctx, user.id);
+  }
   ctx.headers.set("Location", `${ctx.origin}/account${recovery ? "?reset=1" : ""}`);
   return new Response(null, { status: 303, headers: ctx.headers });
 }

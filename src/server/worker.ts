@@ -206,6 +206,7 @@ export async function runWorker(ctx: Context) {
     .delete()
     .lt("window_start", new Date(Date.now() - 86400000).toISOString());
   await db.from("tracking_tokens").delete().lt("expires_at", new Date().toISOString());
+  checkDb(await db.from("mfa_browser_grants").delete().lt("expires_at", new Date().toISOString()));
   const oldUploads = requireDb(
     await db
       .from("upload_tickets")

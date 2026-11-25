@@ -67,6 +67,96 @@ async function begin(request: string, quantity = 1) {
   ).rows[0]!.o;
 }
 describe("database migrations and pharmacy transactions", () => {
+  it("keeps remembered MFA server-only and caps grants at 24 hours", async () => {
+    await expect(
+      db.query(
+        `insert into mfa_browser_grants(token_hash,user_id,factor_id,verified_at,expires_at) values($1,$2,$3,now(),now()+interval '25 hours')`,
+        ["f".repeat(64), owner, crypto.randomUUID()],
+      ),
+    ).rejects.toThrow();
+    await db.exec("set role authenticated");
+    try {
+      await expect(db.query("select * from mfa_browser_grants")).rejects.toThrow();
+      await expect(
+        db.query(
+          `insert into mfa_browser_grants(token_hash,user_id,factor_id,verified_at,expires_at) values($1,$2,$3,now(),now()+interval '24 hours')`,
+          ["f".repeat(64), owner, crypto.randomUUID()],
+        ),
+      ).rejects.toThrow();
+    } finally {
+      await db.exec("reset role");
+    }
+  });
+  it("uses discounted prices for quotes and immutable order items while keeping cost private", async () => {
+    await db.exec("begin");
+    try {
+      await db.query(
+        `update products set discount_price_kobo=200000,cost_price_kobo=130000 where id=$1`,
+        [product],
+      );
+      const q = (
+        await db.query<{ q: any }>(`select calculate_quote($1,$2) q`, [
+          JSON.stringify(input(crypto.randomUUID()).items),
+          zone,
+        ])
+      ).rows[0]!.q;
+      expect(q.subtotal).toBe(200000);
+      const order = await begin(crypto.randomUUID());
+      expect(order.subtotal).toBe(200000);
+      await db.query(`update products set discount_price_kobo=190000 where id=$1`, [product]);
+      expect(
+        (
+          await db.query<{ price_kobo: string }>(
+            `select price_kobo from order_items where order_id=$1`,
+            [order.id],
+          )
+        ).rows[0]!.price_kobo,
+      ).toBe(200000);
+      const catalogRow = (
+        await db.query<{ price_kobo: string; regular_price_kobo: string }>(
+          `select * from catalog where id=$1`,
+          [product],
+        )
+      ).rows[0]!;
+      expect(catalogRow).not.toHaveProperty("cost_price_kobo");
+      expect(Number(catalogRow.price_kobo)).toBe(190000);
+      expect(Number(catalogRow.regular_price_kobo)).toBe(240000);
+    } finally {
+      await db.exec("rollback");
+    }
+    await db.exec("set role authenticated");
+    try {
+      await expect(db.query(`select cost_price_kobo from products`)).rejects.toThrow();
+      await expect(db.query(`select admin_sales_summary(null,null)`)).rejects.toThrow();
+    } finally {
+      await db.exec("reset role");
+    }
+  });
+  it("filters sales by verified payment time with an inclusive start and exclusive end", async () => {
+    await db.exec("begin");
+    try {
+      for (const [at, status] of [
+        ["2050-01-31T22:59:59Z", "paid"],
+        ["2050-01-31T23:00:00Z", "paid"],
+        ["2050-02-28T22:59:59Z", "paid"],
+        ["2050-02-28T23:00:00Z", "paid"],
+        ["2050-02-15T12:00:00Z", "review"],
+      ]) {
+        const order = await begin(crypto.randomUUID());
+        await db.query(`update orders set payment_status=$2 where id=$1`, [order.id, status]);
+        await db.query(`update payments set verified_at=$2 where order_id=$1`, [order.id, at]);
+      }
+      const summary = (
+        await db.query<{ s: any }>(
+          `select admin_sales_summary('2050-01-31T23:00:00Z','2050-02-28T23:00:00Z') s`,
+        )
+      ).rows[0]!.s;
+      expect(summary.confirmed_orders).toBe(2);
+      expect(summary.paid_kobo).toBe(grossUp(240000).total * 2);
+    } finally {
+      await db.exec("rollback");
+    }
+  });
   it("creates RLS on every operational table and blocks client writes", async () => {
     const tables = await db.query<{ relrowsecurity: boolean }>(
       `select relrowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind='r'`,

@@ -17,6 +17,16 @@ The app is ready for frontend preview without credentials. It does not fabricate
 
 ## Operations
 
+Apply `202611250002_mfa_browser_grants.sql` before deploying the session/MFA changes. Customer inactivity expires after 72 hours and staff inactivity after 24 hours. Both retain a seven-day absolute session maximum. Account activity syncs on interaction at most once every five minutes; inactive tabs do not send keepalive polling. Supabase Auth time-box/inactivity settings must allow these durations as well, or the provider will end sessions earlier.
+
+Authenticator enrollment is once per account. A successful code creates a non-sliding 24-hour browser grant, held as an opaque, host-only Secure/HttpOnly/SameSite cookie and a hashed, user/factor-bound database record. No grant is created merely because an existing JWT is `aal2`. Existing enrolled staff enter a code once after deploying this feature. The API exposes a separate `mfaVerified` flag and expiry; it never rewrites Supabase assurance claims. Server staff authorization checks this grant on every request, including its expiry and the factor's current verified status. Direct Supabase RLS policies continue to require actual `aal2` and do not gain a trusted-browser bypass.
+
+Ordinary sign-out ends that session but preserves the remaining browser-verification window. Sign out all devices, password changes and completed password-recovery links revoke remembered browsers. Removed authenticators invalidate their grants immediately. The worker cleans expired grants; expiry is enforced even if the worker is unavailable. A different browser/device needs its own code.
+
+Apply `202611250001_product_pricing_sales.sql` before deploying the optional product prices and dashboard period filters. Regular, discount and staff-only cost prices are stored in integer kobo. A blank discount restores the regular price; a blank cost remains unset. Catalog filtering, quotes and checkout snapshots use the discounted selling price when supplied; existing order snapshots remain unchanged. The catalog view excludes cost prices.
+
+Dashboard sales use verified payment timestamps in Nigeria time, with Monday-based weeks and inclusive custom end dates. Confirmed sales retain the existing gross-charge definition (delivery and customer processing fees included; fully refunded orders excluded). Confirmed-order counts include refunded orders; prescription and pending-payment queues always show current totals. The database returns aggregates rather than downloading orders for calculation.
+
 For the one-time Vault and Cron setup, follow [WORKER_SETUP.md](WORKER_SETUP.md) and run `supabase/operations/schedule-worker.sql`. This operational script is separate from schema migrations and does not enable checkout.
 
 - `/account`: profile, saved addresses, orders/prescriptions, password and MFA settings. Guest tracking requires matching reference/email and an expiring email link. Verified customers can claim matching-email guest orders.

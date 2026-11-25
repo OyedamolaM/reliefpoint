@@ -1,10 +1,12 @@
+import { hasMfaAccess } from "@/lib/session-policy";
 import { uploadFile } from "@/lib/upload";
 import { useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
 import { api, send, notifyError } from "@/lib/api";
-import { slugify, roles, type StaffRole } from "@/lib/contracts";
+import { slugify, roles, productSchema, type StaffRole } from "@/lib/contracts";
+import { nigeriaDate, salesPeriod } from "@/lib/sales-period";
 import { useAccount } from "./auth-provider";
 import { AuthForm, Field, Pagination, Retry, AuthenticatorPanel } from "./account-page";
 import { SiteShell } from "./site-shell";
@@ -130,6 +132,15 @@ export function AdminPage() {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<any>(null);
   const [orderId, setOrderId] = useState("");
+  const [salesFilter, setSalesFilter] = useState(
+    () => `period=month&month=${nigeriaDate().slice(0, 7)}`,
+  );
+  const [period, setPeriod] = useState("month");
+  const salesRange = salesPeriod(new URLSearchParams(salesFilter));
+  const displaySalesDate = (date: string | number) =>
+    new Intl.DateTimeFormat("en-NG", { dateStyle: "medium", timeZone: "Africa/Lagos" }).format(
+      new Date(date),
+    );
   const accessible = sections.filter((s) => user?.roles.some((r) => s.roles.includes(r)));
   const navigation = workspaceGroups.filter(
     (g) => g.key === "overview" || accessible.some((s) => g.resources.includes(s.key)),
@@ -159,7 +170,7 @@ export function AdminPage() {
     "pending_orders",
     "blog_posts",
   ].includes(active);
-  const enabled = !!user && user.aal === "aal2" && accessible.some((s) => s.key === active);
+  const enabled = !!user && hasMfaAccess(user) && accessible.some((s) => s.key === active);
   const data = useQuery({
     queryKey: ["private", "admin", active, page, query, user?.id],
     queryFn: () =>
@@ -170,11 +181,11 @@ export function AdminPage() {
     retry: false,
   });
   const summary = useQuery({
-    queryKey: ["private", "admin-summary", user?.id],
-    queryFn: () => api<Record<string, number>>("admin/summary"),
+    queryKey: ["private", "admin-summary", user?.id, salesFilter],
+    queryFn: () => api<Record<string, number>>(`admin/summary?${salesFilter}`),
     enabled:
       !!user &&
-      user.aal === "aal2" &&
+      hasMfaAccess(user) &&
       group === "overview" &&
       !!user?.roles.some((r) => ["owner", "admin"].includes(r)),
     retry: false,
@@ -205,7 +216,7 @@ export function AdminPage() {
       "blog_posts",
       "staff_roles",
     ].includes(active);
-  if (loading || !user || !user.roles.length || user.aal !== "aal2") {
+  if (loading || !user || !user.roles.length || !hasMfaAccess(user)) {
     return (
       <SiteShell>
         <div className="mx-auto max-w-xl rounded-2xl border bg-white p-6 sm:p-9">
@@ -257,7 +268,7 @@ export function AdminPage() {
             Go to your account
           </Link>
         </p>
-      ) : user.aal !== "aal2" ? (
+      ) : !hasMfaAccess(user) ? (
         <div>
           <h1 className="mb-6 text-3xl font-bold">Secure staff access</h1>
           <AuthenticatorPanel />
@@ -285,6 +296,96 @@ export function AdminPage() {
                 </button>
               )}
             </div>
+          )}
+          {group === "overview" && user.roles.some((r) => ["owner", "admin"].includes(r)) && (
+            <form
+              className="mb-6 rounded-2xl border border-slate-200 bg-white p-5"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const values = new FormData(e.currentTarget);
+                const params = new URLSearchParams();
+                values.forEach((value, key) => params.set(key, String(value)));
+                try {
+                  salesPeriod(params);
+                  setSalesFilter(params.toString());
+                } catch {
+                  toast.error("Choose a valid sales period and date range.");
+                }
+              }}
+            >
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="min-w-36 text-sm font-semibold">
+                  Sales period
+                  <select
+                    aria-label="Sales period"
+                    name="period"
+                    className="commerce-input mt-2"
+                    value={period}
+                    onChange={(e) => setPeriod(e.target.value)}
+                  >
+                    <option value="week">Week</option>
+                    <option value="month">Month</option>
+                    <option value="custom">Custom period</option>
+                    <option value="all">All time</option>
+                  </select>
+                </label>
+                {period === "month" && (
+                  <Field
+                    label="Month"
+                    name="month"
+                    type="month"
+                    defaultValue={nigeriaDate().slice(0, 7)}
+                    min="2000-01"
+                    max="2100-12"
+                    required
+                  />
+                )}
+                {period === "week" && (
+                  <Field
+                    label="Week containing"
+                    name="week"
+                    type="date"
+                    defaultValue={nigeriaDate()}
+                    min="2000-01-01"
+                    max="2100-12-31"
+                    required
+                  />
+                )}
+                {period === "custom" && (
+                  <>
+                    <Field
+                      label="From"
+                      name="from"
+                      type="date"
+                      min="2000-01-01"
+                      max="2100-12-31"
+                      required
+                    />
+                    <Field
+                      label="To"
+                      name="to"
+                      type="date"
+                      min="2000-01-01"
+                      max="2100-12-31"
+                      required
+                    />
+                  </>
+                )}
+                <button className="action-button" disabled={summary.isFetching}>
+                  Apply
+                </button>
+              </div>
+              <p className="mt-3 text-sm font-semibold">
+                Showing:{" "}
+                {salesRange.from && salesRange.to
+                  ? `${displaySalesDate(salesRange.from)} – ${displaySalesDate(new Date(salesRange.to).getTime() - 1)}`
+                  : "All time"}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Sales by verified payment date, Nigeria time. Review and payment queues show current
+                totals.
+              </p>
+            </form>
           )}
           {group === "overview" && summary.error && <Retry error={summary.error} retry={refresh} />}
           {group === "overview" && summary.isLoading && (
@@ -861,11 +962,13 @@ function AdminEditor({
 }) {
   const [photo, setPhoto] = useState(row.image ?? row.cover ?? "");
   const [blocks, setBlocks] = useState<any[]>(row.blocks ?? [{ type: "paragraph", text: "" }]);
+  const [priceError, setPriceError] = useState("");
   const [busy, setBusy] = useState(false);
   const product = resource === "products",
     blog = resource === "blog_posts";
   const save = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setPriceError("");
     if ((product || blog) && !photo) {
       toast.error(
         product ? "Upload a product photo before saving." : "Upload a cover photo before saving.",
@@ -885,6 +988,10 @@ function AdminEditor({
       input = {
         ...input,
         price_kobo: Math.round(Number(d["price"]) * 100),
+        discount_price_kobo: d["discount_price"]
+          ? Math.round(Number(d["discount_price"]) * 100)
+          : null,
+        cost_price_kobo: d["cost_price"] ? Math.round(Number(d["cost_price"]) * 100) : null,
         image: photo,
         active: d["active"] === "on",
         prescription: d["prescription"] === "on",
@@ -900,6 +1007,21 @@ function AdminEditor({
         active: d["active"] === "on",
       };
     try {
+      if (product) {
+        const validated = productSchema.safeParse(input);
+        if (!validated.success) {
+          form.querySelector("details")?.setAttribute("open", "");
+          setPriceError(
+            validated.error.issues.find((issue) => issue.path[0] === "discount_price_kobo")
+              ?.message ?? "",
+          );
+          toast.error(
+            validated.error.issues[0]?.message ?? "Check the product details and try again.",
+          );
+          return;
+        }
+        input = validated.data;
+      }
       await send(`admin/${resource}`, input);
       toast.success("Changes saved.");
       onSaved();
@@ -925,31 +1047,34 @@ function AdminEditor({
               if (slug && !slug.value) slug.value = slugify(e.target.value);
             }}
           />
-          <Field
-            label="Page name"
-            name="slug"
-            defaultValue={row.slug ?? ""}
-            required
-            pattern="[a-z0-9]+(-[a-z0-9]+)*"
-          />
+          {blog && (
+            <Field
+              label="Page name"
+              name="slug"
+              defaultValue={row.slug ?? ""}
+              required
+              pattern="[a-z0-9]+(-[a-z0-9]+)*"
+            />
+          )}
           <Field label="Category" name="category" defaultValue={row.category ?? ""} required />
           <PhotoUpload
             value={photo}
             onChange={setPhoto}
             label={blog ? "Cover photo" : "Product photo"}
           />
-          <Field
-            label="Photo description"
-            name={blog ? "cover_alt" : "image_alt"}
-            defaultValue={row.cover_alt ?? row.image_alt ?? ""}
-            required
-            minLength={3}
-          />
+          {blog && (
+            <Field
+              label="Photo description"
+              name={blog ? "cover_alt" : "image_alt"}
+              defaultValue={row.cover_alt ?? row.image_alt ?? ""}
+              required
+              minLength={3}
+            />
+          )}
         </>
       )}
       {product && (
         <>
-          <Field label="Brand" name="brand" defaultValue={row.brand ?? ""} />
           <Field
             label="Price (₦)"
             name="price"
@@ -959,17 +1084,75 @@ function AdminEditor({
             defaultValue={row.price_kobo ? row.price_kobo / 100 : ""}
             required
           />
-          {["detail", "directions", "storage"].map((key) => (
-            <label key={key} className="block text-sm font-semibold capitalize">
-              {key}
-              <textarea
-                className="commerce-input mt-2"
-                name={key}
-                defaultValue={row[key] ?? ""}
-                required
+          <details className="rounded-xl border border-slate-200 p-4">
+            <summary className="cursor-pointer text-sm font-semibold">
+              More details (optional)
+            </summary>
+            <div className="mt-5 space-y-5">
+              <div className="grid gap-5 sm:grid-cols-2">
+                <div>
+                  <Field
+                    label="Discount price (₦)"
+                    name="discount_price"
+                    type="number"
+                    min="1"
+                    max="1000000"
+                    step="0.01"
+                    aria-invalid={!!priceError}
+                    aria-describedby={priceError ? "discount-price-error" : undefined}
+                    defaultValue={
+                      row.discount_price_kobo == null ? "" : row.discount_price_kobo / 100
+                    }
+                  />
+                  {priceError && (
+                    <p id="discount-price-error" className="mt-2 text-sm text-red-700">
+                      {priceError}
+                    </p>
+                  )}
+                </div>
+                <Field
+                  label="Cost price (₦)"
+                  name="cost_price"
+                  type="number"
+                  min="0"
+                  max="1000000"
+                  step="0.01"
+                  defaultValue={row.cost_price_kobo == null ? "" : row.cost_price_kobo / 100}
+                />
+              </div>
+              <Field label="Brand" name="brand" defaultValue={row.brand ?? ""} maxLength={80} />
+              <Field
+                label="Page name"
+                name="slug"
+                defaultValue={row.slug ?? ""}
+                placeholder="Created from product name"
+                pattern="[a-z0-9]+(-[a-z0-9]+)*"
               />
-            </label>
-          ))}
+              <Field
+                label="Photo description"
+                name="image_alt"
+                defaultValue={row.image_alt ?? ""}
+                placeholder="Uses product name if left blank"
+                minLength={3}
+                maxLength={250}
+              />
+              {["detail", "directions", "storage"].map((key) => (
+                <label key={key} className="block text-sm font-semibold capitalize">
+                  {key === "detail"
+                    ? "Description / pack size"
+                    : key === "directions"
+                      ? "Directions"
+                      : "Storage"}
+                  <textarea
+                    className="commerce-input mt-2"
+                    name={key}
+                    defaultValue={row[key] ?? ""}
+                    maxLength={key === "directions" ? 4000 : 2000}
+                  />
+                </label>
+              ))}
+            </div>
+          </details>
           <div className="flex flex-wrap gap-5">
             {["active", "prescription", "deal"].map((key) => (
               <label key={key} className="flex items-center gap-2 text-sm capitalize">

@@ -1,3 +1,4 @@
+import { hasMfaAccess } from "@/lib/session-policy";
 import { useState, useId, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -193,8 +194,8 @@ export function Field({
       <input
         className="commerce-input mt-2"
         {...props}
-        aria-invalid={!!error}
-        aria-describedby={error ? id : undefined}
+        aria-invalid={!!error || props["aria-invalid"]}
+        aria-describedby={error ? id : props["aria-describedby"]}
         onInvalid={(e) => {
           setError(e.currentTarget.validationMessage);
           onInvalid?.(e);
@@ -640,16 +641,20 @@ export function AuthenticatorPanel() {
   const factors = useQuery({
     queryKey: ["private", "mfa", account.user?.id],
     queryFn: () => send<{ factors: { id: string; name: string }[] }>("auth/mfa-factors", {}),
-    enabled: !!account.user && account.user.aal !== "aal2",
+    enabled: !!account.user && !hasMfaAccess(account.user),
     retry: false,
   });
   return (
     <section className="space-y-5">
-      {account.user?.aal === "aal2" ? (
+      {hasMfaAccess(account.user) ? (
         <div className="rounded-xl bg-emerald-50 p-5 text-emerald-800">
           <ShieldCheck className="mb-3" />
           <h2 className="font-bold">Authenticator verified</h2>
-          <p className="mt-2 text-sm">Two-step verification is complete for this session.</p>
+          <p className="mt-2 text-sm">
+            {account.user?.mfaExpiresAt
+              ? `Verified until ${new Intl.DateTimeFormat("en-NG", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Lagos" }).format(new Date(account.user.mfaExpiresAt))}.`
+              : "This browser is verified for 24 hours."}
+          </p>
         </div>
       ) : (
         <>

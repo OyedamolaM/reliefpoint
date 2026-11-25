@@ -55,22 +55,48 @@ export type BlogPost = z.infer<typeof postSchema> & {
   published_at: string | null;
   updated_at: string;
 };
-export const productSchema = z.object({
-  id: z.string().uuid().optional(),
-  name: z.string().trim().min(2).max(180),
-  slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-  detail: z.string().max(2000),
-  category: z.string().min(2).max(80),
-  brand: z.string().max(80).default(""),
-  price_kobo: z.number().int().min(100).max(100000000),
-  image: z.string().url(),
-  image_alt: z.string().min(3).max(250),
-  directions: z.string().min(5).max(4000),
-  storage: z.string().min(5).max(2000),
-  prescription: z.boolean(),
-  deal: z.boolean(),
-  active: z.boolean(),
-});
+export const productSchema = z.preprocess(
+  (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+    const input = value as Record<string, unknown>;
+    const name = typeof input["name"] === "string" ? input["name"].trim() : "";
+    return {
+      ...input,
+      slug: input["slug"] === undefined || input["slug"] === "" ? slugify(name) : input["slug"],
+      image_alt:
+        input["image_alt"] === undefined || input["image_alt"] === ""
+          ? `${name} product photo`
+          : input["image_alt"],
+    };
+  },
+  z
+    .object({
+      id: z.string().uuid().optional(),
+      name: z.string().trim().min(2).max(180),
+      slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+      detail: z.string().max(2000).default(""),
+      category: z.string().min(2).max(80),
+      brand: z.string().max(80).default(""),
+      price_kobo: z.number().int().min(100).max(100000000),
+      discount_price_kobo: z.number().int().min(100).max(100000000).nullable().default(null),
+      cost_price_kobo: z.number().int().min(0).max(100000000).nullable().default(null),
+      image: z.string().url(),
+      image_alt: z.string().min(3).max(250),
+      directions: z.string().max(4000).default(""),
+      storage: z.string().max(2000).default(""),
+      prescription: z.boolean().default(false),
+      deal: z.boolean().default(false),
+      active: z.boolean().default(false),
+    })
+    .refine(
+      (product) =>
+        product.discount_price_kobo === null || product.discount_price_kobo < product.price_kobo,
+      {
+        path: ["discount_price_kobo"],
+        message: "Discount price must be lower than the regular price.",
+      },
+    ),
+);
 export const checkoutSchema = z.object({
   items: z
     .array(z.object({ id: z.string().uuid(), quantity: z.number().int().min(1).max(99) }))

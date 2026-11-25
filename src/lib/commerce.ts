@@ -26,6 +26,7 @@ export type Product = {
   detail: string;
   category: string;
   price: number;
+  originalPrice?: number;
   image: string;
   inStock: boolean;
   prescription: boolean;
