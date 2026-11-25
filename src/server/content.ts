@@ -5,8 +5,9 @@ import { AppError, checkDb, requireDb } from "./errors";
 import { products as previewProducts, type Product } from "@/lib/commerce";
 import { slugify } from "@/lib/contracts";
 import { cachedPublic } from "./public-cache";
+import { selectCatalog } from "./catalog-query";
 
-type CatalogRow = {
+export type CatalogRow = {
   id: string;
   slug: string;
   name: string;
@@ -55,30 +56,33 @@ async function readCatalog(params: URLSearchParams) {
     };
   const page = Math.max(0, Math.min(10000, Number(params.get("page")) || 0));
   const sort = params.get("sort");
-  let query = database()
-    .from("catalog")
-    .select(
-      "id,name,slug,detail,category,price_kobo,regular_price_kobo,image,image_alt,prescription,deal,available",
-    )
-    .eq("active", true);
-  const search = params.get("q")?.trim().slice(0, 100);
-  if (search) query = query.textSearch("fts", search, { type: "websearch", config: "simple" });
-  if (params.get("category") && params.get("category") !== "All")
-    query = query.eq("category", params.get("category")!);
-  if (params.get("max"))
-    query = query.lte(
-      "price_kobo",
-      z.coerce.number().min(0).max(100000000).parse(params.get("max")),
-    );
-  if (params.get("stock") === "1") query = query.gt("available", 0);
-  if (params.get("deals") === "1") query = query.eq("deal", true);
-  query =
-    sort === "name"
-      ? query.order("name")
-      : sort?.startsWith("price")
-        ? query.order("price_kobo", { ascending: sort === "price-low" })
-        : query.order("deal", { ascending: false });
-  const rows = requireDb(await query.order("id").range(page * 24, page * 24 + 24));
+  const rows = await selectCatalog(
+    "id,name,slug,detail,category,price_kobo,regular_price_kobo,image,image_alt,prescription,deal,available",
+    async (columns) => {
+      let query = database().from("catalog").select(columns).eq("active", true);
+      const search = params.get("q")?.trim().slice(0, 100);
+      if (search) query = query.textSearch("fts", search, { type: "websearch", config: "simple" });
+      if (params.get("category") && params.get("category") !== "All")
+        query = query.eq("category", params.get("category")!);
+      if (params.get("max"))
+        query = query.lte(
+          "price_kobo",
+          z.coerce.number().min(0).max(100000000).parse(params.get("max")),
+        );
+      if (params.get("stock") === "1") query = query.gt("available", 0);
+      if (params.get("deals") === "1") query = query.eq("deal", true);
+      query =
+        sort === "name"
+          ? query.order("name")
+          : sort?.startsWith("price")
+            ? query.order("price_kobo", { ascending: sort === "price-low" })
+            : query.order("deal", { ascending: false });
+      return await query
+        .returns<CatalogRow[]>()
+        .order("id")
+        .range(page * 24, page * 24 + 24);
+    },
+  );
   return {
     products: rows.slice(0, 24).map(toProduct),
     configured: true,

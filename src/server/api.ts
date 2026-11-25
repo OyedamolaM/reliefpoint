@@ -4,7 +4,8 @@ import { AppError, checkDb, requireDb } from "./errors";
 import { config } from "./config";
 import { requestContext, rate, requireStaff } from "./session";
 import { authAction, authCallback } from "./auth";
-import { catalog, publicContent, toProduct } from "./content";
+import { catalog, publicContent, toProduct, type CatalogRow } from "./content";
+import { selectCatalog } from "./catalog-query";
 import {
   beginCheckout,
   initializePayment,
@@ -67,14 +68,17 @@ export async function handleApi(request: Request) {
         await rate(ctx, "resolve", 30, 60);
         result = {
           products: input.ids.length
-            ? requireDb(
-                await ctx.db
-                  .from("catalog")
-                  .select(
-                    "id,name,slug,detail,category,price_kobo,regular_price_kobo,image,image_alt,directions,storage,prescription,deal,available",
-                  )
-                  .eq("active", true)
-                  .in("id", input.ids),
+            ? (
+                await selectCatalog(
+                  "id,name,slug,detail,category,price_kobo,regular_price_kobo,image,image_alt,directions,storage,prescription,deal,available",
+                  (columns) =>
+                    ctx.db
+                      .from("catalog")
+                      .select(columns)
+                      .eq("active", true)
+                      .in("id", input.ids)
+                      .returns<CatalogRow[]>(),
+                )
               ).map(toProduct)
             : [],
         };
