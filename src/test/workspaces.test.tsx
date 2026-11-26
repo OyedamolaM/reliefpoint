@@ -157,6 +157,19 @@ vi.mock("@/lib/api", () => ({
         more: page + 1 < state.categoryNames.length,
       };
     }
+    if (path.startsWith("admin/order?id="))
+      return {
+        order: state.createdOrder,
+        items: [],
+        events: [],
+        prescriptions: [],
+        refunds: [],
+        payment: null,
+        receipt: null,
+        staff_notes: [],
+        notifications: [],
+        can_resume: false,
+      };
     if (path.startsWith("admin/orders?")) {
       const pending = path.includes("view=pending");
       return {
@@ -385,6 +398,42 @@ describe("pharmacy workspaces", () => {
         "Find products",
       ),
     ).toBeInTheDocument();
+  });
+  it("renders a dedicated order page and opens actions in separate modals", async () => {
+    state.createdOrder = {
+      id: "order-1",
+      reference: "legacy-reference",
+      public_reference: "RP-100123",
+      payment_status: "paid",
+      payment_method: "paystack",
+      fulfillment_status: "processing",
+      prescription_status: "not_required",
+      created_at: "2026-11-26T12:00:00Z",
+      subtotal: 250000,
+      delivery: 0,
+      processing: 0,
+      total: 250000,
+      contact: { name: "Buyer", phone: "08012345678", address: "12 Road" },
+      zone_snapshot: { state: "Lagos", lga: "Ikeja", area: "Oregun", estimate: "Tomorrow" },
+    };
+    render(<AdminPage selectedOrderId="order-1" />);
+    expect(await screen.findByRole("heading", { name: "Order RP-100123" })).toBeVisible();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to orders" })).toHaveAttribute(
+      "href",
+      "/admin?section=orders",
+    );
+    expect(screen.queryByLabelText("Delivery status")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Update order tracking" }));
+    const modal = screen.getByRole("dialog", { name: "Update order tracking" });
+    expect(within(modal).getByLabelText("Delivery status")).toBeVisible();
+    fireEvent.click(within(modal).getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel order" }));
+    expect(
+      within(screen.getByRole("dialog", { name: "Cancel order" })).getByRole("button", {
+        name: "Confirm cancellation",
+      }),
+    ).toBeVisible();
   });
   it("discovers an order created elsewhere without a refresh button", async () => {
     vi.useFakeTimers();

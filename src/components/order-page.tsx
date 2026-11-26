@@ -1,3 +1,5 @@
+import { WorkspaceModal } from "./workspace-shell";
+import type { ReactNode } from "react";
 import { SectionLoading } from "./section-loading";
 import { invalidateOrderData, orderReadOptions, orderRefreshInterval } from "@/lib/order-updates";
 import { PaymentPhotoButton } from "./payment-photo";
@@ -39,6 +41,7 @@ export function OrderView({
   const account = useAccount();
   const shop = useCommerce();
   const [busy, setBusy] = useState(false);
+  const [openAction, setOpenAction] = useState("");
   const refundRequest = useRef(crypto.randomUUID());
   const data = useQuery({
     queryKey: ["private", "order", id, token, admin],
@@ -81,9 +84,32 @@ export function OrderView({
     ["owner", "admin", "fulfillment"].includes(r),
   );
   const refresh = (status?: string) => {
+    setOpenAction("");
     if (onUpdate) onUpdate(status);
     else void invalidateOrderData(queryClient);
   };
+  const actionDialog = (title: string, content: ReactNode) => (
+    <>
+      <button
+        type="button"
+        className="action-button"
+        disabled={busy}
+        onClick={() => setOpenAction(title)}
+      >
+        {title}
+      </button>
+      <WorkspaceModal
+        open={openAction === title}
+        onClose={() => {
+          if (!busy) setOpenAction("");
+        }}
+        title={title}
+        size="medium"
+      >
+        {content}
+      </WorkspaceModal>
+    </>
+  );
   const action = async (name: string, input: unknown) => {
     setBusy(true);
     try {
@@ -160,7 +186,10 @@ export function OrderView({
             order.payment_status === "pending" &&
             order.payment_method === "manual_pending" && (
               <div className="mt-4">
-                <ManualPaymentForm id={id} total={order.total} onSaved={refresh} />
+                {actionDialog(
+                  "Record payment",
+                  <ManualPaymentForm id={id} total={order.total} onSaved={refresh} />,
+                )}
               </div>
             )}
           {order.payment_method !== "manual_pending" && admin && (
@@ -349,33 +378,36 @@ export function OrderView({
                 />
               </label>
             )}
-          {admin && pharmacy && (
-            <form
-              className="mt-5 space-y-3"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const d = new FormData(e.currentTarget);
-                void action("prescription-review", {
-                  id,
-                  value: d.get("value"),
-                  note: d.get("note"),
-                });
-              }}
-            >
-              <label className="block">
-                Review result
-                <select name="value" className="commerce-input mt-2">
-                  <option value="approved">Approve</option>
-                  <option value="clarification">Request clarification</option>
-                  <option value="rejected">Reject — refund review required</option>
-                </select>
-              </label>
-              <Field label="Customer-facing review notes" name="note" required />
-              <button className="action-button" disabled={busy}>
-                Save review
-              </button>
-            </form>
-          )}
+          {admin &&
+            pharmacy &&
+            actionDialog(
+              "Review prescription",
+              <form
+                className="mt-5 space-y-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const d = new FormData(e.currentTarget);
+                  void action("prescription-review", {
+                    id,
+                    value: d.get("value"),
+                    note: d.get("note"),
+                  });
+                }}
+              >
+                <label className="block">
+                  Review result
+                  <select name="value" className="commerce-input mt-2">
+                    <option value="approved">Approve</option>
+                    <option value="clarification">Request clarification</option>
+                    <option value="rejected">Reject — refund review required</option>
+                  </select>
+                </label>
+                <Field label="Customer-facing review notes" name="note" required />
+                <button className="action-button" disabled={busy}>
+                  Save review
+                </button>
+              </form>,
+            )}
         </section>
       )}
       {refunds.length > 0 && (
@@ -390,7 +422,9 @@ export function OrderView({
       )}
       {admin &&
         manage &&
-        !["dispatched", "delivered", "cancelled"].includes(order.fulfillment_status) && (
+        !["dispatched", "delivered", "cancelled"].includes(order.fulfillment_status) &&
+        actionDialog(
+          "Manage order items",
           <section className="space-y-4 rounded-xl border p-4">
             <h2 className="font-bold">Cancellation & remaining items</h2>
             <form
@@ -432,36 +466,44 @@ export function OrderView({
               <button
                 className="underline"
                 disabled={busy}
-                onClick={() => {
-                  if (
-                    window.confirm("Cancel this order? Paid orders also require a separate refund.")
-                  )
-                    void action("cancel-order", { id, note: "Cancelled by the pharmacy" });
-                }}
-              >
-                Cancel whole order
-              </button>
-              <button
-                className="underline"
-                disabled={busy}
                 onClick={() => void action("approve-remaining", { id })}
               >
                 Approve remaining items after refund
               </button>
             </div>
-          </section>
+          </section>,
         )}
-      {admin && fulfillment && (
-        <TrackingEditor
-          key={order.fulfillment_status + events.length}
-          id={id}
-          pickup={order.zone_snapshot.fulfillment_method === "pickup"}
-          status={order.fulfillment_status}
-          lastEvent={events.at(-1)}
-          busy={busy}
-          action={action}
-        />
-      )}
+      {admin &&
+        manage &&
+        !["dispatched", "delivered", "cancelled"].includes(order.fulfillment_status) &&
+        actionDialog(
+          "Cancel order",
+          <div className="space-y-4">
+            <p>Cancel this order? Paid orders also require a separate refund.</p>
+            <button
+              type="button"
+              className="action-button"
+              disabled={busy}
+              onClick={() => void action("cancel-order", { id, note: "Cancelled by the pharmacy" })}
+            >
+              Confirm cancellation
+            </button>
+          </div>,
+        )}
+      {admin &&
+        fulfillment &&
+        actionDialog(
+          "Update order tracking",
+          <TrackingEditor
+            key={order.fulfillment_status + events.length}
+            id={id}
+            pickup={order.zone_snapshot.fulfillment_method === "pickup"}
+            status={order.fulfillment_status}
+            lastEvent={events.at(-1)}
+            busy={busy}
+            action={action}
+          />,
+        )}
       {admin && (
         <section className="space-y-4 rounded-2xl border bg-white p-5 sm:p-6">
           <h2 className="font-bold">Staff notes</h2>
@@ -473,7 +515,10 @@ export function OrderView({
               </p>
             </div>
           ))}
-          <InternalNoteForm id={id} busy={busy} action={action} />
+          {actionDialog(
+            "Add internal note",
+            <InternalNoteForm id={id} busy={busy} action={action} />,
+          )}
         </section>
       )}
       {admin && (
@@ -515,46 +560,50 @@ export function OrderView({
           ))}
         </section>
       )}
-      {admin && manage && (!order.payment_method || order.payment_method === "paystack") && (
-        <form
-          className="space-y-3 rounded-xl border p-4"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const form = e.currentTarget;
-            const d = new FormData(form);
-            const saved = await action("refund", {
-              id,
-              amount: Math.round(Number(d.get("amount")) * 100),
-              note: d.get("note"),
-              request_id: refundRequest.current,
-            });
-            if (saved) {
-              form.reset();
-              refundRequest.current = crypto.randomUUID();
-            }
-          }}
-        >
-          <h2 className="font-bold">Request refund</h2>
-          <p className="text-sm">
-            Products and delivery: {formatNaira((order.subtotal + order.delivery) / 100)} ·
-            processing: {formatNaira(order.processing / 100)}. The approved fee policy controls the
-            maximum refundable amount.
-          </p>
-          <Field
-            label="Refund amount (₦)"
-            name="amount"
-            type="number"
-            min="0.01"
-            max={order.total / 100}
-            step="0.01"
-            required
-          />
-          <Field label="Reason" name="note" required />
-          <button className="action-button" disabled={busy}>
-            Submit refund for processing
-          </button>
-        </form>
-      )}
+      {admin &&
+        manage &&
+        (!order.payment_method || order.payment_method === "paystack") &&
+        actionDialog(
+          "Request refund",
+          <form
+            className="space-y-3 rounded-xl border p-4"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const form = e.currentTarget;
+              const d = new FormData(form);
+              const saved = await action("refund", {
+                id,
+                amount: Math.round(Number(d.get("amount")) * 100),
+                note: d.get("note"),
+                request_id: refundRequest.current,
+              });
+              if (saved) {
+                form.reset();
+                refundRequest.current = crypto.randomUUID();
+              }
+            }}
+          >
+            <h2 className="font-bold">Request refund</h2>
+            <p className="text-sm">
+              Products and delivery: {formatNaira((order.subtotal + order.delivery) / 100)} ·
+              processing: {formatNaira(order.processing / 100)}. The approved fee policy controls
+              the maximum refundable amount.
+            </p>
+            <Field
+              label="Refund amount (₦)"
+              name="amount"
+              type="number"
+              min="0.01"
+              max={order.total / 100}
+              step="0.01"
+              required
+            />
+            <Field label="Reason" name="note" required />
+            <button className="action-button" disabled={busy}>
+              Submit refund for processing
+            </button>
+          </form>,
+        )}
       {!admin && !token && (
         <button
           className="action-button"
