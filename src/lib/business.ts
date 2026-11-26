@@ -1,13 +1,24 @@
 import type { PublicSettings } from "./contracts";
 // Operational policy drafts. The owner must approve the configured versions before live checkout.
 export const policyDefaults: PublicSettings = {
+  terms_text: `These terms apply to your use of Relief Point Pharmacy and purchases made through this website.
+
+Provide accurate contact and delivery details and keep your account credentials secure. You may shop as a guest. Account registration requires email verification. Pharmacy staff may contact you about your purchase or prescription.
+
+Prices are displayed in Nigerian naira. Delivery charges and any payment processing fee are shown before you pay. Online payments are confirmed with our payment provider; cash or bank-transfer payments on staff-created orders are confirmed by authorised staff. Do not pay again while a payment is being checked.
+
+Product availability is checked at checkout. Prescription medicines require a valid prescription and pharmacist approval before dispatch. Substitutions require your consent. Website health information does not replace individual advice from a qualified healthcare professional.
+
+Delivery fees and estimated delivery times depend on the area selected. Please read our Shipping Policy, Refund Policy and Privacy Policy before placing a purchase. If an item cannot be supplied or a prescription cannot be approved, our team will explain the available resolution. Refunds follow the applicable policy shown at checkout.
+
+Contact support@reliefpointpharmacy.com or +234 706 784 1607 for account, purchase or policy questions.`,
   privacy_text: `Relief Point Pharmacy handles customer information to provide pharmacy support, process purchases and arrange delivery.
 
 When you use the relevant services, we collect your name, email, phone number, delivery address, account information, order history and prescriptions you choose to upload. Prescription information is restricted to authorised pharmacy staff. Please avoid sharing medical information through the general contact form.
 
 Supabase supports account authentication, database and file storage. Paystack processes payments; we do not store your card number, PIN or bank password. Brevo sends account and transaction emails. Delivery providers receive the contact and address information needed to deliver your order.
 
-Essential cookies keep you signed in and protect checkout. Your browser may also store your basket and wishlist. Signing out clears private account data from the interface. Instagram links open Instagram only when you choose to follow them.
+Essential cookies keep you signed in and protect checkout. Optional browser storage remembers your basket, wishlist and delivery details only when you allow it in Cookie settings or checkout. Delivery drafts include your name, email, phone, address, delivery area and note, expire after seven days, and are removed on sign-out or account switching. Prescription files, payment details and authentication tokens are never saved in these drafts. Essential only keeps checkout details in memory for the current visit; signed-in account lists are still saved to your account. You can change your choice using Cookie settings in the footer. Declining optional storage removes saved browser lists and delivery drafts without signing you out. The preference lasts 180 days. We do not use advertising or analytics trackers. Signing out clears private account data from the interface. Instagram links open Instagram only when you choose to follow them.
 
 We restrict access to customer records and retain information according to applicable obligations and our approved retention schedule. Prescription files are kept separately from public product photos. You can request access, correction or deletion, subject to identity checks and applicable recordkeeping requirements.
 

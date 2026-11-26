@@ -20,6 +20,7 @@ import { Route as PrivacyPolicyRouteImport } from './routes/privacy-policy'
 import { Route as RefundPolicyRouteImport } from './routes/refund-policy'
 import { Route as ShippingPolicyRouteImport } from './routes/shipping-policy'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as TermsAndConditionsRouteImport } from './routes/terms-and-conditions'
 import { Route as ApiSplatRouteImport } from './routes/api.$'
 import { Route as HealthTipsIndexRouteImport } from './routes/health-tips.index'
 import { Route as HealthTipsSlugRouteImport } from './routes/health-tips.$slug'
@@ -82,6 +83,11 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TermsAndConditionsRoute = TermsAndConditionsRouteImport.update({
+  id: '/terms-and-conditions',
+  path: '/terms-and-conditions',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSplatRoute = ApiSplatRouteImport.update({
   id: '/api/$',
   path: '/api/$',
@@ -125,6 +131,7 @@ export interface FileRoutesByFullPath {
   '/refund-policy': typeof RefundPolicyRoute
   '/shipping-policy': typeof ShippingPolicyRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/terms-and-conditions': typeof TermsAndConditionsRoute
   '/api/$': typeof ApiSplatRoute
   '/health-tips/$slug': typeof HealthTipsSlugRoute
   '/orders/$id': typeof OrdersIdRoute
@@ -144,6 +151,7 @@ export interface FileRoutesByTo {
   '/refund-policy': typeof RefundPolicyRoute
   '/shipping-policy': typeof ShippingPolicyRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/terms-and-conditions': typeof TermsAndConditionsRoute
   '/api/$': typeof ApiSplatRoute
   '/health-tips/$slug': typeof HealthTipsSlugRoute
   '/orders/$id': typeof OrdersIdRoute
@@ -164,6 +172,7 @@ export interface FileRoutesById {
   '/refund-policy': typeof RefundPolicyRoute
   '/shipping-policy': typeof ShippingPolicyRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/terms-and-conditions': typeof TermsAndConditionsRoute
   '/api/$': typeof ApiSplatRoute
   '/health-tips/$slug': typeof HealthTipsSlugRoute
   '/orders/$id': typeof OrdersIdRoute
@@ -185,6 +194,7 @@ export interface FileRouteTypes {
     | '/refund-policy'
     | '/shipping-policy'
     | '/sitemap.xml'
+    | '/terms-and-conditions'
     | '/api/$'
     | '/health-tips/$slug'
     | '/orders/$id'
@@ -204,6 +214,7 @@ export interface FileRouteTypes {
     | '/refund-policy'
     | '/shipping-policy'
     | '/sitemap.xml'
+    | '/terms-and-conditions'
     | '/api/$'
     | '/health-tips/$slug'
     | '/orders/$id'
@@ -223,6 +234,7 @@ export interface FileRouteTypes {
     | '/refund-policy'
     | '/shipping-policy'
     | '/sitemap.xml'
+    | '/terms-and-conditions'
     | '/api/$'
     | '/health-tips/$slug'
     | '/orders/$id'
@@ -243,6 +255,7 @@ export interface RootRouteChildren {
   RefundPolicyRoute: typeof RefundPolicyRoute
   ShippingPolicyRoute: typeof ShippingPolicyRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
+  TermsAndConditionsRoute: typeof TermsAndConditionsRoute
   ApiSplatRoute: typeof ApiSplatRoute
   HealthTipsSlugRoute: typeof HealthTipsSlugRoute
   OrdersIdRoute: typeof OrdersIdRoute
@@ -330,6 +343,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/terms-and-conditions': {
+      id: '/terms-and-conditions'
+      path: '/terms-and-conditions'
+      fullPath: '/terms-and-conditions'
+      preLoaderRoute: typeof TermsAndConditionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/$': {
       id: '/api/$'
       path: '/api/$'
@@ -387,6 +407,7 @@ const rootRouteChildren: RootRouteChildren = {
   RefundPolicyRoute: RefundPolicyRoute,
   ShippingPolicyRoute: ShippingPolicyRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
+  TermsAndConditionsRoute: TermsAndConditionsRoute,
   ApiSplatRoute: ApiSplatRoute,
   HealthTipsSlugRoute: HealthTipsSlugRoute,
   OrdersIdRoute: OrdersIdRoute,

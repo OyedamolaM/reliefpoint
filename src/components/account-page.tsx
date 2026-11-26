@@ -20,15 +20,18 @@ import {
   Pencil,
   LockKeyhole,
   ArrowRight,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { WorkspaceShell, WorkspaceModal, EmptyWorkspace } from "./workspace-shell";
 import { useCommerce } from "./commerce-provider";
 
-export function AuthForm() {
+export function AuthForm({ initialMode = "signin" }: { initialMode?: "signin" | "signup" }) {
   const account = useAccount();
-  const [mode, setMode] = useState("signin");
+  const [mode, setMode] = useState<string>(initialMode);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const termsId = useId();
   return (
     <section className="mx-auto w-full max-w-md">
       <div className="mb-5 flex items-center gap-3">
@@ -86,10 +89,15 @@ export function AuthForm() {
             if (mode === "signup" && data.get("password") !== data.get("confirm")) {
               throw new Error("password_mismatch");
             }
+            if (mode === "signup" && data.get("terms") !== "on") {
+              setMessage("Please agree to the Terms and Conditions before signing up.");
+              toast.error("Please agree to the Terms and Conditions before signing up.");
+              return;
+            }
             const result = await send<{ message?: string }>(`auth/${mode}`, {
               email: data.get("email"),
               password: data.get("password"),
-              ...(mode === "signup" ? { name: data.get("name") } : {}),
+              ...(mode === "signup" ? { name: data.get("name"), accepted_terms: true } : {}),
             });
             if (result.message) {
               setMessage(result.message);
@@ -110,6 +118,7 @@ export function AuthForm() {
         <Field name="email" label="Email address" type="email" required autoComplete="email" />
         {!["reset", "resend"].includes(mode) && (
           <Field
+            key={mode}
             name="password"
             label="Password"
             type="password"
@@ -120,6 +129,39 @@ export function AuthForm() {
         )}
         {mode === "signup" && (
           <Field name="confirm" label="Confirm password" type="password" required minLength={10} />
+        )}
+        {mode === "signup" && (
+          <div className="flex items-start gap-2 text-xs leading-6 text-slate-600">
+            <input
+              id={termsId}
+              className="mt-1.5 shrink-0 accent-brand"
+              type="checkbox"
+              name="terms"
+              required
+              aria-label="Agree to Terms and Conditions and acknowledge Privacy Policy"
+            />
+            <label htmlFor={termsId}>
+              I agree to the{" "}
+              <Link
+                to="/terms-and-conditions"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-brand underline"
+              >
+                Terms and Conditions
+              </Link>{" "}
+              and acknowledge the{" "}
+              <Link
+                to="/privacy-policy"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-brand underline"
+              >
+                Privacy Policy
+              </Link>
+              .
+            </label>
+          </div>
         )}
         {message && (
           <p role="status" className="rounded-lg bg-secondary p-3 text-sm">
@@ -187,30 +229,53 @@ export function Field({
   ...props
 }: React.InputHTMLAttributes<HTMLInputElement> & { label: string }) {
   const [error, setError] = useState("");
+  const [visible, setVisible] = useState(false);
+  const isPassword = props.type === "password";
   const id = useId();
   return (
-    <label className="block text-sm font-semibold">
-      {label}
-      <input
-        className="commerce-input mt-2"
-        {...props}
-        aria-invalid={!!error || props["aria-invalid"]}
-        aria-describedby={error ? id : props["aria-describedby"]}
-        onInvalid={(e) => {
-          setError(e.currentTarget.validationMessage);
-          onInvalid?.(e);
-        }}
-        onChange={(e) => {
-          setError("");
-          onChange?.(e);
-        }}
-      />
+    <div className="block text-sm font-semibold">
+      <label htmlFor={props.id || id + "-input"}>{label}</label>
+      <div className="relative">
+        <input
+          {...props}
+          id={props.id || id + "-input"}
+          className={`commerce-input mt-2 ${isPassword ? "pr-12" : ""}`}
+          type={isPassword && visible ? "text" : props.type}
+          aria-invalid={!!error || props["aria-invalid"]}
+          aria-describedby={error ? id : props["aria-describedby"]}
+          onInvalid={(e) => {
+            setError(e.currentTarget.validationMessage);
+            onInvalid?.(e);
+          }}
+          onChange={(e) => {
+            setError("");
+            onChange?.(e);
+          }}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            aria-label={`${visible ? "Hide" : "Show"} ${label.toLowerCase()}`}
+            aria-pressed={visible}
+            aria-controls={props.id || id + "-input"}
+            disabled={props.disabled}
+            className="absolute right-1 top-2 flex h-[calc(100%-0.5rem)] w-11 items-center justify-center rounded-lg text-slate-500 hover:text-brand focus-visible:outline-2 focus-visible:outline-brand"
+            onClick={() => setVisible(!visible)}
+          >
+            {visible ? (
+              <EyeOff size={18} aria-hidden="true" />
+            ) : (
+              <Eye size={18} aria-hidden="true" />
+            )}
+          </button>
+        )}
+      </div>
       {error && (
         <span id={id} className="mt-1 block text-xs text-red-700">
           {error}
         </span>
       )}
-    </label>
+    </div>
   );
 }
 const accountNavigation = [

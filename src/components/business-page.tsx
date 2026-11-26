@@ -11,15 +11,18 @@ const titles: Record<string, string> = {
   "privacy-policy": "Privacy policy",
   "refund-policy": "Refund policy",
   "shipping-policy": "Shipping policy",
+  "terms-and-conditions": "Terms and Conditions",
 };
 export function BusinessPage({ kind, settings }: { kind: string; settings: PublicSettings }) {
   const [busy, setBusy] = useState(false);
   const policy =
-    kind === "privacy-policy"
-      ? settings.privacy_text || policyDefaults.privacy_text
-      : kind === "refund-policy"
-        ? settings.refund_text || policyDefaults.refund_text
-        : settings.shipping_text || policyDefaults.shipping_text;
+    kind === "terms-and-conditions"
+      ? settings.terms_text || policyDefaults.terms_text
+      : kind === "privacy-policy"
+        ? settings.privacy_text || policyDefaults.privacy_text
+        : kind === "refund-policy"
+          ? settings.refund_text || policyDefaults.refund_text
+          : settings.shipping_text || policyDefaults.shipping_text;
   return (
     <SiteShell>
       <div className="mx-auto max-w-3xl">

@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useCommerce } from "./commerce-provider";
+import { openCookieSettings } from "@/lib/cookie-preferences";
 export function SiteShell({ children }: { children: ReactNode }) {
   const shop = useCommerce();
   return (
@@ -30,6 +31,10 @@ export function SiteShell({ children }: { children: ReactNode }) {
             <Link to="/about">About us</Link>
             <Link to="/contact">Contact us</Link>
             <Link to="/privacy-policy">Privacy policy</Link>
+            <Link to="/terms-and-conditions">Terms and Conditions</Link>
+            <button type="button" onClick={openCookieSettings}>
+              Cookie settings
+            </button>
             <Link to="/refund-policy">Refund policy</Link>
             <Link to="/shipping-policy">Shipping policy</Link>
           </div>

@@ -40,6 +40,7 @@ import { useAccount } from "./auth-provider";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { useCommerce } from "@/components/commerce-provider";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { openCookieSettings } from "@/lib/cookie-preferences";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { ProductVisual } from "@/components/product-visual";
 import {
@@ -383,19 +384,47 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
           </a>
           <div className="desktop-search">{searchForm("desktop-store-search")}</div>
           <div className="header-actions">
-            <button
-              onClick={() => shop.openPanel("account")}
-              className="header-action"
-              aria-label="Open account"
-            >
-              <UserRound />
-              <span>
-                <small>
-                  {shop.profile ? `Hi, ${shop.profile.name.split(" ")[0]}` : "Hi, Guest"}
-                </small>
-                <strong>{shop.profile ? "My profile" : "Sign in / Register"}</strong>
-              </span>
-            </button>
+            {account.user ? (
+              <button
+                onClick={() => shop.openPanel("account")}
+                className="header-action"
+                aria-label="Open account"
+              >
+                <UserRound />
+                <span>
+                  <small>
+                    {account.user.name ? `Hi, ${account.user.name.split(" ")[0]}` : "Your account"}
+                  </small>
+                  <strong>My account</strong>
+                </span>
+              </button>
+            ) : (
+              <>
+                <div className="hidden items-center gap-2 sm:flex">
+                  <button
+                    onClick={() => shop.openPanel("account")}
+                    className="rounded-lg border border-brand/20 px-3 py-2.5 text-sm font-semibold text-brand hover:bg-blue-50"
+                  >
+                    Sign in
+                  </button>
+                  <button
+                    onClick={() => shop.openPanel("signup")}
+                    className="rounded-lg bg-brand px-3 py-2.5 text-sm font-semibold text-white hover:brightness-110"
+                  >
+                    Sign up
+                  </button>
+                </div>
+                <div className="sm:hidden">
+                  <button
+                    onClick={() => shop.openPanel("account")}
+                    className="header-action"
+                    aria-label="Sign in"
+                  >
+                    <UserRound />
+                  </button>
+                </div>
+              </>
+            )}
             <button
               onClick={shop.openWishlist}
               className="header-action wishlist-header"
@@ -519,24 +548,47 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
             </button>
           </div>
           <div className="px-4 py-4">
-            <button
-              className="flex w-full items-center gap-3 rounded-xl bg-brand px-4 py-3 text-left text-white"
-              onClick={() => {
-                setMobileOpen(false);
-                shop.openPanel("account");
-              }}
-            >
-              <span className="rounded-lg bg-white/15 p-2">
-                <UserRound size={18} />
-              </span>
-              <span className="flex-1 text-sm font-bold">
-                {account.user ? "My account" : "Sign in / Register"}
-                <span className="mt-0.5 block text-[11px] font-normal text-blue-100">
-                  {account.user ? "Orders, profile & saved details" : "Welcome to ReliefPoint"}
+            {account.user ? (
+              <button
+                className="flex w-full items-center gap-3 rounded-xl bg-brand px-4 py-3 text-left text-white"
+                onClick={() => {
+                  setMobileOpen(false);
+                  shop.openPanel("account");
+                }}
+              >
+                <span className="rounded-lg bg-white/15 p-2">
+                  <UserRound size={18} />
                 </span>
-              </span>
-              <ChevronRight size={16} />
-            </button>
+                <span className="flex-1 text-sm font-bold">
+                  My account
+                  <span className="mt-0.5 block text-[11px] font-normal text-blue-100">
+                    Orders, profile & saved details
+                  </span>
+                </span>
+                <ChevronRight size={16} />
+              </button>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  className="rounded-xl bg-brand px-4 py-3 text-sm font-bold text-white"
+                  onClick={() => {
+                    setMobileOpen(false);
+                    shop.openPanel("account");
+                  }}
+                >
+                  Sign in
+                </button>
+                <button
+                  className="rounded-xl border border-brand/20 bg-blue-50 px-4 py-3 text-sm font-bold text-brand"
+                  onClick={() => {
+                    setMobileOpen(false);
+                    shop.openPanel("signup");
+                  }}
+                >
+                  Sign up
+                </button>
+              </div>
+            )}
           </div>
           <nav aria-label="Mobile store navigation" className="flex-1 px-4 pb-5">
             <div className="mb-5 grid grid-cols-2 gap-2">
@@ -1126,6 +1178,10 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
             <Link to="/about">About us</Link>
             <Link to="/contact">Contact us</Link>
             <Link to="/privacy-policy">Privacy policy</Link>
+            <Link to="/terms-and-conditions">Terms and Conditions</Link>
+            <button type="button" onClick={openCookieSettings}>
+              Cookie settings
+            </button>
             <Link to="/refund-policy">Refund policy</Link>
             <Link to="/shipping-policy">Shipping policy</Link>
             <button onClick={() => shop.openPanel("account")}>My account</button>

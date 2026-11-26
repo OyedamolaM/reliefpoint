@@ -18,6 +18,7 @@ import { loadStorefront } from "@/lib/public-data";
 import { toast } from "sonner";
 import { GlobalNotifications } from "@/components/global-notifications";
 import { canonicalUrl } from "@/lib/seo";
+import { CookieNotice } from "@/components/cookie-notice";
 
 function NotFoundComponent() {
   return (
@@ -134,6 +135,7 @@ function RootShell({ children }: { children: ReactNode }) {
         {children}
         <Toaster position="top-right" richColors closeButton />
         <GlobalNotifications />
+        <CookieNotice />
         <Scripts />
       </body>
     </html>

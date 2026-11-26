@@ -15,6 +15,7 @@ const publicPaths = [
   "/about",
   "/contact",
   "/privacy-policy",
+  "/terms-and-conditions",
   "/refund-policy",
   "/shipping-policy",
   "/health-tips",

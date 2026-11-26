@@ -135,6 +135,7 @@ export type PublicSettings = {
   privacy_text?: string;
   refund_text?: string;
   shipping_text?: string;
+  terms_text?: string;
 };
 export type ShippingZone = {
   id: string;

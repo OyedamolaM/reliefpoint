@@ -4,8 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CommerceProvider } from "@/components/commerce-provider";
 import { PharmacyStorefront } from "@/components/pharmacy-storefront";
 import { WISHLIST_STORAGE_KEY } from "@/lib/commerce";
+import { saveCookiePreferences } from "@/lib/cookie-preferences";
 beforeEach(() => {
   localStorage.clear();
+  saveCookiePreferences(true);
   HTMLElement.prototype.scrollIntoView = vi.fn();
 });
 afterEach(cleanup);

@@ -6,6 +6,7 @@ const credentials = z.object({
   email: z.string().email().max(180),
   password: z.string().min(10).max(128),
   name: z.string().trim().min(2).max(100).optional(),
+  accepted_terms: z.boolean().optional(),
 });
 export async function authAction(ctx: Context, action: string, body: unknown) {
   if (action === "session") return { user: await identity(ctx, true) };
@@ -14,11 +15,20 @@ export async function authAction(ctx: Context, action: string, body: unknown) {
     await rate(ctx, "auth-ip", 20, 900);
     await rate(ctx, "auth", 5, 900, input.email);
     if (action === "signup") {
+      if (!input.accepted_terms)
+        throw new AppError(
+          "TERMS_REQUIRED",
+          "Please agree to the Terms and Conditions before signing up.",
+        );
       const { error } = await ctx.auth.auth.signUp({
         email: input.email,
         password: input.password,
         options: {
-          data: { name: input.name ?? "" },
+          data: {
+            name: input.name ?? "",
+            terms_version: "2026-11-26",
+            terms_accepted_at: new Date().toISOString(),
+          },
           emailRedirectTo: `${ctx.origin}/api/auth/callback`,
         },
       });

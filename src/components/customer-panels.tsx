@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { nigerianStates, whatsapp } from "@/lib/commerce";
 
 export type CustomerPanel =
-  "account" | "prescription" | "tracking" | "stores" | "service" | "loyalty";
+  "account" | "signup" | "prescription" | "tracking" | "stores" | "service" | "loyalty";
 export type ShoppingProfile = { name: string; email: string };
 export function CustomerPanels({
   panel,
@@ -42,8 +42,12 @@ export function CustomerPanels({
       }}
     >
       <DialogContent className="max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-2xl border-slate-200 bg-white p-6 shadow-2xl sm:p-8">
-        {panel === "account" ? (
-          <AccountDialog onClose={onClose} />
+        {panel === "account" || panel === "signup" ? (
+          <AccountDialog
+            key={panel}
+            initialMode={panel === "signup" ? "signup" : "signin"}
+            onClose={onClose}
+          />
         ) : panel === "prescription" ? (
           <PrescriptionPanel />
         ) : panel === "tracking" ? (
@@ -78,7 +82,13 @@ export function CustomerPanels({
     </Dialog>
   );
 }
-function AccountDialog({ onClose }: { onClose: () => void }) {
+function AccountDialog({
+  onClose,
+  initialMode,
+}: {
+  onClose: () => void;
+  initialMode: "signin" | "signup";
+}) {
   const account = useAccount();
   return (
     <>
@@ -115,7 +125,7 @@ function AccountDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
       ) : (
-        <AuthForm />
+        <AuthForm initialMode={initialMode} />
       )}
     </>
   );

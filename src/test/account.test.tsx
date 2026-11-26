@@ -20,6 +20,59 @@ function mount() {
   fireEvent.click(screen.getByText("Account"));
 }
 describe("secure account forms", () => {
+  it("shows and hides the password without changing it or submitting", () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    mount();
+    const password = screen.getByLabelText("Password");
+    fireEvent.change(password, { target: { value: "secret12345" } });
+    fireEvent.click(screen.getByRole("button", { name: "Show password" }));
+    expect(password).toHaveAttribute("type", "text");
+    expect(password).toHaveValue("secret12345");
+    fireEvent.click(screen.getByRole("button", { name: "Hide password" }));
+    expect(password).toHaveAttribute("type", "password");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("opens signup directly and provides policies before requiring agreement", async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json({ message: "Check your email." }));
+    vi.stubGlobal("fetch", fetch);
+    function Signup() {
+      const shop = useCommerce();
+      return <button onClick={() => shop.openPanel("signup")}>Sign up directly</button>;
+    }
+    render(
+      <CommerceProvider>
+        <Signup />
+      </CommerceProvider>,
+    );
+    fireEvent.click(screen.getByText("Sign up directly"));
+    expect(screen.getByRole("heading", { name: "Create your account" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Terms and Conditions" })).toHaveAttribute(
+      "href",
+      "/terms-and-conditions",
+    );
+    expect(screen.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute(
+      "target",
+      "_blank",
+    );
+    fireEvent.change(screen.getByLabelText("Full name"), { target: { value: "Amina Test" } });
+    fireEvent.change(screen.getByLabelText("Email address"), {
+      target: { value: "amina@example.com" },
+    });
+    for (const label of ["Password", "Confirm password"])
+      fireEvent.change(screen.getByLabelText(label), { target: { value: "secret12345" } });
+    const form = screen.getByRole("button", { name: "Create account" }).closest("form")!;
+    fireEvent.submit(form);
+    expect(fetch).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("checkbox", { name: /Agree to Terms/ }));
+    fireEvent.submit(form);
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/auth/signup",
+        expect.objectContaining({ body: expect.stringContaining('"accepted_terms":true') }),
+      ),
+    );
+  });
   it("validates matching passwords before registration", () => {
     mount();
     fireEvent.click(screen.getByRole("button", { name: "Switch to create account" }));
