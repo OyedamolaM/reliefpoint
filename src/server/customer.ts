@@ -59,6 +59,7 @@ export async function orderDetails(ctx: Context, id: string, trackingToken?: str
     refunds,
     payment,
     can_resume:
+      (!order.payment_method || order.payment_method === "paystack") &&
       order.payment_status === "pending" &&
       !order.reservation_released &&
       Date.parse(order.reservation_expires) > Date.now() &&

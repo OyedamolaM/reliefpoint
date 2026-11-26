@@ -29,6 +29,15 @@ export function checkDb<T>(result: { data: T; error: unknown }): T {
       PRESCRIPTION_UNAVAILABLE: "Upload a prescription before reviewing this order.",
       FORBIDDEN: "You don’t have access to this action.",
       OWNER_REQUIRED: "Only the owner can change owner access.",
+      MANUAL_ORDER_REQUIRED: "Manual payments are available only for staff-created orders.",
+      MANUAL_PAYMENT_INVALID: "Enter the full amount due and a receipt or transfer reference.",
+      PAYMENT_RECORD_CONFLICT:
+        "This payment reference was already used with different details. Check the payment before retrying.",
+      PAYMENT_ALREADY_RECEIVED:
+        "This order already has a payment update. Refresh its details before continuing.",
+      ORDER_CANCELLED: "This order has been cancelled and cannot receive a payment.",
+      MANUAL_REFUND_REQUIRED:
+        "Return cash or bank-transfer payments outside Paystack. No gateway refund was submitted.",
       OWNER_RECOVERY_REQUIRED: "Verify your authenticator code again to restore owner access.",
       SELF_REMOVAL: "You cannot remove your own access.",
       STAFF_ACCOUNT_MISSING:

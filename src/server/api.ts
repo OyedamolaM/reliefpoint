@@ -25,6 +25,9 @@ import {
   inviteCustomer,
   inviteStaff,
   importProducts,
+  createAdminOrder,
+  quoteAdminOrder,
+  recordManualPayment,
 } from "./admin";
 import { uploadTicket, finalizeUpload } from "./uploads";
 import { runWorker } from "./worker";
@@ -148,6 +151,12 @@ export async function handleApi(request: Request) {
         result = await inviteCustomer(ctx, await body());
       } else if (path === "admin/staff-invite" && method === "POST") {
         result = await inviteStaff(ctx, await body());
+      } else if (path === "admin/order-create" && method === "POST") {
+        result = await createAdminOrder(ctx, await body());
+      } else if (path === "admin/order-quote" && method === "POST") {
+        result = await quoteAdminOrder(ctx, await body());
+      } else if (path === "admin/manual-payment" && method === "POST") {
+        result = await recordManualPayment(ctx, await body());
       } else if (path === "admin/record" && method === "GET") {
         result = await adminRecord(
           ctx,
@@ -170,6 +179,15 @@ export async function handleApi(request: Request) {
         const order = requireDb(await ctx.db.from("orders").select("*").eq("id", id).single());
         result = {
           order: { ...order, guest_hash: undefined },
+          manual_payment: order.created_by
+            ? checkDb(
+                await ctx.db
+                  .from("manual_payments")
+                  .select("method,amount,reference,note,created_at,actor")
+                  .eq("order_id", id)
+                  .maybeSingle(),
+              )
+            : null,
           items: requireDb(await ctx.db.from("order_items").select("*").eq("order_id", id)),
           prescriptions: actor.roles.some((r) => ["owner", "admin", "pharmacist"].includes(r))
             ? requireDb(

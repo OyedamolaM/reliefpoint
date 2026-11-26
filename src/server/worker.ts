@@ -45,8 +45,9 @@ export async function runWorker(ctx: Context) {
   const pending = requireDb(
     await db
       .from("payments")
-      .select("reference,orders!inner(payment_status,created_at)")
+      .select("reference,orders!inner(payment_status,created_at,payment_method)")
       .eq("orders.payment_status", "pending")
+      .eq("orders.payment_method", "paystack")
       .lt("orders.created_at", new Date(Date.now() - 60000).toISOString())
       .gt("orders.created_at", new Date(Date.now() - 7 * 86400000).toISOString())
       .lte("next_check_at", new Date().toISOString())

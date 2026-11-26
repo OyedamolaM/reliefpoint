@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { postSchema, productSchema, roles, type StaffRole } from "@/lib/contracts";
+import { checkoutSchema, postSchema, productSchema, roles, type StaffRole } from "@/lib/contracts";
 import { AppError, checkDb, requireDb } from "./errors";
 import { audit, requireStaff, rate, type Context, type Identity } from "./session";
 import { assertMedia } from "./uploads";
@@ -27,6 +27,71 @@ const permissions: Record<string, StaffRole[]> = {
   notification_outbox: ["owner", "admin"],
   webhook_events: ["owner", "admin"],
 };
+export async function createAdminOrder(ctx: Context, body: unknown) {
+  const actor = await requireStaff(ctx, ["owner", "admin"]);
+  const input = checkoutSchema.parse(body);
+  await rate(ctx, "admin-order", 10, 60, actor.id);
+  // Stable on retry, scoped to this staff member, independent of their personal cart.
+  const token = ctx.hash(`admin-order-link:${actor.id}:${input.request_id}`);
+  const order = requireDb(
+    await ctx.db.rpc("create_admin_order", {
+      p_actor: actor.id,
+      p_input: input,
+      p_guest: ctx.hash(`admin-order:${actor.id}:${input.request_id}`),
+      p_token_hash: ctx.hash(token),
+    }),
+  );
+  return {
+    order: { id: order.id, reference: order.reference, payment_status: order.payment_status },
+    url: `${ctx.origin}/orders/${order.id}?token=${token}`,
+    expires_at: order.link_expires_at,
+    total: order.total,
+    message: "Saved under Pending payments. Record the payment once received.",
+  };
+}
+export async function quoteAdminOrder(ctx: Context, body: unknown) {
+  const actor = await requireStaff(ctx, ["owner", "admin"]);
+  const input = checkoutSchema.parse(body);
+  await rate(ctx, "admin-order-quote", 30, 60, actor.id);
+  const quote = requireDb(
+    await ctx.db.rpc("calculate_quote", { p_items: input.items, p_zone: input.zone_id }),
+  );
+  return {
+    quote: { ...quote, processing: 0, total: Number(quote.subtotal) + Number(quote.delivery) },
+  };
+}
+export async function recordManualPayment(ctx: Context, body: unknown) {
+  const actor = await requireStaff(ctx, ["owner", "admin"]);
+  const input = z
+    .object({
+      id: z.string().uuid(),
+      request_id: z.string().uuid(),
+      method: z.enum(["cash", "bank_transfer"]),
+      amount: z.number().int().positive().max(100000000000),
+      reference: z.string().trim().min(3).max(120),
+      note: z.string().trim().max(1000).default(""),
+    })
+    .parse(body);
+  await rate(ctx, "manual-payment", 10, 60, actor.id);
+  const order = requireDb(
+    await ctx.db.rpc("record_manual_payment", {
+      p_actor: actor.id,
+      p_order: input.id,
+      p_request: input.request_id,
+      p_method: input.method,
+      p_amount: input.amount,
+      p_reference: input.reference,
+      p_note: input.note,
+    }),
+  );
+  return {
+    status: order.payment_status,
+    message:
+      order.payment_status === "review"
+        ? "Payment recorded. Stock needs review before dispatch."
+        : "Payment recorded. The order is now confirmed.",
+  };
+}
 function requireAdminData<T>(
   ctx: Context,
   resource: string,
@@ -524,6 +589,7 @@ async function writeAdminRecord(ctx: Context, resource: string, body: unknown, a
           privacy_text: z.string().max(20000),
           refund_text: z.string().max(20000),
           shipping_text: z.string().max(20000),
+          terms_text: z.string().max(20000).default(""),
         }),
         checkout_enabled: z.boolean(),
         launch_approved: z.boolean(),

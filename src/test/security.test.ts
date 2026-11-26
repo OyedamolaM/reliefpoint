@@ -22,6 +22,26 @@ function environment() {
     vi.stubEnv(key, value);
 }
 describe("server security boundaries", () => {
+  it("never sends manual payments to Paystack reconciliation", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const ctx = {
+      db: {
+        from: () => ({
+          select: () => ({
+            eq: () => ({
+              single: async () => ({
+                data: { payment_method: "cash", payment_status: "paid" },
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      },
+    } as unknown as Context;
+    await expect(reconcile(ctx, "RP-" + "a".repeat(32))).resolves.toEqual({ status: "paid" });
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it("keeps a checkout resumable before Paystack has created its transaction", async () => {
     environment();
     vi.stubGlobal(
@@ -29,7 +49,16 @@ describe("server security boundaries", () => {
       vi.fn().mockResolvedValue(Response.json({ status: false }, { status: 404 })),
     );
     const ctx = {
-      db: { from: () => ({ update: () => ({ eq: async () => ({ data: null, error: null }) }) }) },
+      db: {
+        from: () => ({
+          select: () => ({
+            eq: () => ({
+              single: async () => ({ data: { payment_method: "paystack" }, error: null }),
+            }),
+          }),
+          update: () => ({ eq: async () => ({ data: null, error: null }) }),
+        }),
+      },
     } as unknown as Context;
     await expect(reconcile(ctx, "RP-" + "a".repeat(32))).resolves.toEqual({ status: "pending" });
   });

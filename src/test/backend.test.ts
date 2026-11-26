@@ -67,6 +67,140 @@ async function begin(request: string, quantity = 1) {
   ).rows[0]!.o;
 }
 describe("database migrations and pharmacy transactions", () => {
+  it("creates staff purchases without gateway fees or account attachment and records manual payment once", async () => {
+    await db.exec("begin");
+    try {
+      await db.exec("update settings set checkout_enabled=false");
+      const request = crypto.randomUUID(),
+        receipt = crypto.randomUUID();
+      const create = () =>
+        db.query<{ o: any }>("select create_admin_order($1,$2::jsonb,$3,$4) o", [
+          owner,
+          JSON.stringify(input(request)),
+          "b".repeat(64),
+          "c".repeat(64),
+        ]);
+      const o = (await create()).rows[0]!.o;
+      expect((await create()).rows[0]!.o.id).toBe(o.id);
+      expect(o).toMatchObject({
+        created_by: owner,
+        user_id: null,
+        processing: 0,
+        payment_method: "manual_pending",
+        payment_status: "pending",
+        total: 240000,
+        test_mode: false,
+      });
+      expect(
+        (await db.query("select 1 from tracking_tokens where order_id=$1", [o.id])).rows,
+      ).toHaveLength(1);
+      await db.exec("savepoint wrong_amount");
+      await expect(
+        db.query("select record_manual_payment($1,$2,$3,'cash',100,'RECEIPT-1','')", [
+          owner,
+          o.id,
+          receipt,
+        ]),
+      ).rejects.toThrow("MANUAL_PAYMENT_INVALID");
+      await db.exec("rollback to savepoint wrong_amount");
+      const pay = () =>
+        db.query<{ o: any }>(
+          "select record_manual_payment($1,$2,$3,'cash',240000,'RECEIPT-1','Received at pharmacy') o",
+          [owner, o.id, receipt],
+        );
+      expect((await pay()).rows[0]!.o).toMatchObject({
+        payment_status: "paid",
+        payment_method: "cash",
+        fulfillment_status: "prescription_review",
+        stock_committed: true,
+      });
+      await pay();
+      expect(
+        (
+          await db.query<{ quantity: number }>(
+            "select quantity from inventory_batches where product_id=$1",
+            [product],
+          )
+        ).rows[0]!.quantity,
+      ).toBe(9);
+      expect(
+        (await db.query("select 1 from manual_payments where order_id=$1", [o.id])).rows,
+      ).toHaveLength(1);
+      expect(
+        (
+          await db.query(
+            "select 1 from audit_log where resource_id=$1 and action in ('admin_order_created','manual_payment_recorded')",
+            [o.id],
+          )
+        ).rows,
+      ).toHaveLength(2);
+      await db.exec("savepoint duplicate_payment");
+      await expect(
+        db.query("select record_manual_payment($1,$2,$3,'cash',240000,'RECEIPT-2','')", [
+          owner,
+          o.id,
+          crypto.randomUUID(),
+        ]),
+      ).rejects.toThrow("PAYMENT_ALREADY_RECEIVED");
+      await db.exec("rollback to savepoint duplicate_payment");
+      await db.exec("savepoint offline_refund");
+      await expect(
+        db.query(
+          "insert into refunds(order_id,amount,reason,actor) values($1,100,'Manual return',$2)",
+          [o.id, owner],
+        ),
+      ).rejects.toThrow("MANUAL_REFUND_REQUIRED");
+      await db.exec("rollback to savepoint offline_refund");
+    } finally {
+      await db.exec("rollback");
+    }
+  });
+  it("prevents manual recording on customer checkouts and rejects non-admin staff", async () => {
+    await db.exec("begin");
+    try {
+      const o = await begin(crypto.randomUUID());
+      await db.exec("savepoint customer_payment");
+      await expect(
+        db.query("select record_manual_payment($1,$2,$3,'bank_transfer',$4,'BANK-1','')", [
+          owner,
+          o.id,
+          crypto.randomUUID(),
+          o.total,
+        ]),
+      ).rejects.toThrow("MANUAL_ORDER_REQUIRED");
+      await db.exec("rollback to savepoint customer_payment");
+      await db.exec("savepoint non_admin");
+      await expect(
+        db.query("select create_admin_order($1,$2::jsonb,$3,$4)", [
+          pharmacist,
+          JSON.stringify(input(crypto.randomUUID())),
+          "b".repeat(64),
+          "c".repeat(64),
+        ]),
+      ).rejects.toThrow("FORBIDDEN");
+      await db.exec("rollback to savepoint non_admin");
+    } finally {
+      await db.exec("rollback");
+    }
+    for (const role of ["anon", "authenticated"]) {
+      await db.exec(`set role ${role}`);
+      try {
+        await expect(
+          db.query("select create_admin_order($1,$2::jsonb,$3,$4)", [
+            owner,
+            JSON.stringify(input(crypto.randomUUID())),
+            "b".repeat(64),
+            "c".repeat(64),
+          ]),
+        ).rejects.toThrow("permission denied");
+        await expect(db.query("select * from manual_payments")).rejects.toThrow(
+          "permission denied",
+        );
+      } finally {
+        await db.exec("reset role");
+      }
+    }
+  });
   it("restores an owner only with a verified email, active session and unexpired MFA, and audits once", async () => {
     const session = "00000000-0000-4000-8000-000000000090";
     const factor = "00000000-0000-4000-8000-000000000091";

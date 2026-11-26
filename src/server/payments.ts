@@ -130,6 +130,11 @@ export async function initializePayment(ctx: Context, id: string, channel: strin
   z.enum(["card", "bank_transfer", "ussd"]).parse(channel);
   await rate(ctx, "payment-init", 5, 60, ctx.guestHash);
   const order = await ownedOrder(ctx, id);
+  if (order.payment_method && order.payment_method !== "paystack")
+    throw new AppError(
+      "MANUAL_ORDER_PAYMENT",
+      "Payment for this order is handled directly by the pharmacy.",
+    );
   const settings = requireDb(
     await ctx.db
       .from("settings")
@@ -204,6 +209,15 @@ export async function initializePayment(ctx: Context, id: string, channel: strin
 export async function reconcile(ctx: Context, reference: string) {
   if (!/^RP-[a-f0-9]{32}$/.test(reference))
     throw new AppError("REFERENCE_INVALID", "This payment reference isn’t valid.");
+  const binding = requireDb(
+    await ctx.db
+      .from("orders")
+      .select("id,test_mode,payment_status,payment_method")
+      .eq("reference", reference)
+      .single(),
+  );
+  if (binding.payment_method && binding.payment_method !== "paystack")
+    return { status: binding.payment_status };
   checkDb(
     await ctx.db
       .from("payments")
