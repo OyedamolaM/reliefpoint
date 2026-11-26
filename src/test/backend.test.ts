@@ -67,6 +67,148 @@ async function begin(request: string, quantity = 1) {
   ).rows[0]!.o;
 }
 describe("database migrations and pharmacy transactions", () => {
+  it("restores an owner only with a verified email, active session and unexpired MFA, and audits once", async () => {
+    const session = "00000000-0000-4000-8000-000000000090";
+    const factor = "00000000-0000-4000-8000-000000000091";
+    const token = "a".repeat(64);
+    await db.exec("begin");
+    try {
+      await db.query("insert into app_sessions(id,user_id) values($1,$2)", [session, other]);
+      await db.query(
+        "insert into mfa_browser_grants values($1,$2,$3,now()-interval '1 minute',now()+interval '1 hour')",
+        [token, other, factor],
+      );
+      const recover = () =>
+        db.query("select recover_owner_access($1,$2,$3,$4)", [
+          other,
+          "two@example.com",
+          session,
+          token,
+        ]);
+      for (const change of [
+        "update auth.users set email_confirmed_at=null where email='two@example.com'",
+        "update app_sessions set revoked=true",
+        "update app_sessions set recovery=true",
+        "update app_sessions set last_seen=now()-interval '24 hours'",
+        "update app_sessions set created_at=now()-interval '7 days'",
+        "update mfa_browser_grants set expires_at=now()-interval '1 second'",
+        "update profiles set sessions_revoked_at=now()",
+      ]) {
+        await db.exec("savepoint invalid_recovery");
+        await db.exec(change);
+        await expect(recover()).rejects.toThrow("OWNER_RECOVERY_REQUIRED");
+        await db.exec("rollback to savepoint invalid_recovery");
+      }
+      await db.exec("savepoint invalid_email");
+      await expect(
+        db.query("select recover_owner_access($1,'wrong@example.com',$2,$3)", [
+          other,
+          session,
+          token,
+        ]),
+      ).rejects.toThrow("OWNER_RECOVERY_REQUIRED");
+      await db.exec("rollback to savepoint invalid_email");
+      await recover();
+      await recover();
+      expect(
+        (
+          await db.query(
+            "select 1 from audit_log where actor=$1 and action='environment_owner_recovered'",
+            [other],
+          )
+        ).rows,
+      ).toHaveLength(1);
+      // The recovered role must satisfy database authorization, not just the UI.
+      await db.query("select manage_staff_role($1,$2,'admin',false)", [other, customer]);
+      expect(
+        (await db.query("select 1 from staff_roles where user_id=$1 and role='admin'", [customer]))
+          .rows,
+      ).toHaveLength(1);
+    } finally {
+      await db.exec("rollback");
+    }
+    for (const role of ["anon", "authenticated"]) {
+      await db.exec(`set role ${role}`);
+      try {
+        await expect(
+          db.query("select recover_owner_access($1,'two@example.com',$2,$3)", [
+            other,
+            session,
+            token,
+          ]),
+        ).rejects.toThrow("permission denied");
+      } finally {
+        await db.exec("reset role");
+      }
+    }
+  });
+  it("lets administrators grant staff roles while protecting owners and self access", async () => {
+    await db.exec("begin");
+    try {
+      await db.query("select manage_staff_role($1,$2,'admin',false)", [owner, customer]);
+      await db.query("select manage_staff_role($1,$2,'pharmacist',false)", [customer, other]);
+      expect(
+        (
+          await db.query("select 1 from staff_roles where user_id=$1 and role='pharmacist'", [
+            other,
+          ])
+        ).rows,
+      ).toHaveLength(1);
+      for (const [actor, target, role, remove] of [
+        [customer, other, "owner", false],
+        [customer, owner, "owner", true],
+        [customer, customer, "admin", true],
+        [other, customer, "admin", false],
+      ] as const) {
+        await db.exec("savepoint protected_access");
+        await expect(
+          db.query("select manage_staff_role($1,$2,$3,$4)", [actor, target, role, remove]),
+        ).rejects.toThrow();
+        await db.exec("rollback to savepoint protected_access");
+      }
+      expect(
+        (
+          await db.query("select 1 from audit_log where actor=$1 and action='staff_role_granted'", [
+            owner,
+          ])
+        ).rows,
+      ).toHaveLength(1);
+    } finally {
+      await db.exec("rollback");
+    }
+    await db.exec("set role authenticated");
+    try {
+      await expect(db.query("select staff_account_by_email('one@example.com')")).rejects.toThrow();
+      await expect(
+        db.query("select manage_staff_role($1,$2,'admin',false)", [owner, customer]),
+      ).rejects.toThrow();
+    } finally {
+      await db.exec("reset role");
+    }
+  });
+  it("checks admin setup without reading customer records", async () => {
+    const result = await db.query<{ name: string; exists: boolean; service_access: boolean }>(
+      readFileSync("supabase/operations/verify-admin.sql", "utf8"),
+    );
+    expect(result.rows).toHaveLength(8);
+    expect(result.rows.every((row) => row.exists && row.service_access)).toBe(true);
+  });
+  it("can safely repeat the release-specific admin repair without deleting records", async () => {
+    const before = (
+      await db.query<{ count: number }>("select count(*)::integer count from profiles")
+    ).rows[0]!.count;
+    const repair = readFileSync("supabase/operations/repair-admin-loading.sql", "utf8");
+    await db.exec(repair);
+    await db.exec(repair);
+    expect(
+      (await db.query<{ count: number }>("select count(*)::integer count from profiles")).rows[0]!
+        .count,
+    ).toBe(before);
+    const directory = (
+      await db.query<{ result: { rows: unknown[] } }>("select admin_customer_directory() result")
+    ).rows[0]!.result;
+    expect(directory.rows).toHaveLength(before);
+  });
   it("searches purchased-item snapshots and customer details with date bounds before pagination", async () => {
     await db.exec("begin");
     try {

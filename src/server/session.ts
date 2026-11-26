@@ -6,6 +6,7 @@ import { AppError, checkDb, requireDb } from "./errors";
 import type { StaffRole } from "@/lib/contracts";
 import { absoluteSessionMs, inactivityMs } from "@/lib/session-policy";
 import { rememberedMfa } from "./mfa-browser";
+import { isEnvironmentSupport } from "./environment-support";
 import { isAuthSessionMissingError, type AuthError } from "@supabase/supabase-js";
 
 function checkAuthAvailability(ctx: Context, error: AuthError | null) {
@@ -123,6 +124,7 @@ export type Identity = {
   recovery: boolean;
   mfaVerified: boolean;
   mfaExpiresAt: string | null;
+  environmentSupport: boolean;
 };
 export async function identity(ctx: Context, optional = false): Promise<Identity | null> {
   const {
@@ -148,6 +150,9 @@ export async function identity(ctx: Context, optional = false): Promise<Identity
   const sessionId = String(claims.session_id);
   const staff = requireDb(await ctx.db.from("staff_roles").select("role").eq("user_id", user.id));
   const roleList = staff.map((s) => s.role as StaffRole);
+  const environmentSupport = isEnvironmentSupport(user);
+  const needsOwnerRecovery = environmentSupport && !roleList.includes("owner");
+  if (needsOwnerRecovery) roleList.push("owner");
   let record = checkDb(
     await ctx.db.from("app_sessions").select("*").eq("id", sessionId).maybeSingle(),
   );
@@ -207,6 +212,18 @@ export async function identity(ctx: Context, optional = false): Promise<Identity
   const mfaExpiresAt = record.recovery
     ? null
     : await rememberedMfa(ctx, user, profile?.sessions_revoked_at);
+  // Restore a real database role only after this session and browser's MFA are verified.
+  // Database RPCs enforce staff_roles too; a presentation-only role would not suffice.
+  if (needsOwnerRecovery && mfaExpiresAt) {
+    checkDb(
+      await ctx.db.rpc("recover_owner_access", {
+        p_user: user.id,
+        p_email: user.email!,
+        p_session: sessionId,
+        p_mfa_hash: ctx.hash(ctx.cookie("rp-mfa")!),
+      }),
+    );
+  }
   return {
     id: user.id,
     email: user.email ?? "",
@@ -218,6 +235,7 @@ export async function identity(ctx: Context, optional = false): Promise<Identity
     recovery: !!record.recovery,
     mfaVerified: mfaExpiresAt !== null,
     mfaExpiresAt,
+    environmentSupport,
   };
 }
 export async function requireStaff(ctx: Context, roles: StaffRole[]): Promise<Identity> {

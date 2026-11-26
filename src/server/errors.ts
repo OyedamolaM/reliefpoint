@@ -28,6 +28,11 @@ export function checkDb<T>(result: { data: T; error: unknown }): T {
       REFUND_UNAVAILABLE: "This order cannot be refunded yet. Check its payment status.",
       PRESCRIPTION_UNAVAILABLE: "Upload a prescription before reviewing this order.",
       FORBIDDEN: "You don’t have access to this action.",
+      OWNER_REQUIRED: "Only the owner can change owner access.",
+      OWNER_RECOVERY_REQUIRED: "Verify your authenticator code again to restore owner access.",
+      SELF_REMOVAL: "You cannot remove your own access.",
+      STAFF_ACCOUNT_MISSING:
+        "This account could not be found. Refresh the staff list and try again.",
     };
     if (known[message]) throw new AppError(message, known[message]!);
     if (typeof result.error === "object" && "code" in result.error && result.error.code === "23505")

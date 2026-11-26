@@ -17,6 +17,8 @@ export default defineConfig(({ mode }) => {
     "PAYSTACK_SECRET_KEY",
     "BREVO_API_KEY",
     "WORKER_SECRET",
+    "SUPPORT_USER_ID",
+    "SUPPORT_EMAIL",
   ]) {
     if (!process.env[key] && local[key]) process.env[key] = local[key];
   }

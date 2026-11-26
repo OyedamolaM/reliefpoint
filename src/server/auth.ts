@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { AppError, checkDb } from "./errors";
-import { identity, rate, type Context } from "./session";
+import { identity, rate, audit, type Context } from "./session";
 import { rememberMfa, revokeRememberedMfa } from "./mfa-browser";
 const credentials = z.object({
   email: z.string().email().max(180),
@@ -201,6 +201,8 @@ export async function authAction(ctx: Context, action: string, body: unknown) {
         "MFA_INVALID",
         "That code didn’t work. Enter the current code from your authenticator.",
       );
+    if (user.environmentSupport)
+      await audit(ctx, user.id, "environment_recovery_verified", "owner_recovery", user.id);
     await rememberMfa(ctx, user.id, input.id);
     return { user: await identity(ctx), message: "Your identity has been verified." };
   }

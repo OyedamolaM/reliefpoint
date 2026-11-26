@@ -23,6 +23,7 @@ import {
   adminRecord,
   adminDashboard,
   inviteCustomer,
+  inviteStaff,
   importProducts,
 } from "./admin";
 import { uploadTicket, finalizeUpload } from "./uploads";
@@ -145,6 +146,8 @@ export async function handleApi(request: Request) {
         result = await adminDashboard(ctx, url.searchParams);
       } else if (path === "admin/customer-invite" && method === "POST") {
         result = await inviteCustomer(ctx, await body());
+      } else if (path === "admin/staff-invite" && method === "POST") {
+        result = await inviteStaff(ctx, await body());
       } else if (path === "admin/record" && method === "GET") {
         result = await adminRecord(
           ctx,

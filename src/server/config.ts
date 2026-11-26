@@ -10,6 +10,8 @@ const schema = z.object({
     .url()
     .refine((value) => new URL(value).origin === value),
   SESSION_SECRET: z.string().min(32),
+  SUPPORT_USER_ID: z.string().trim().uuid().optional().or(z.literal("")),
+  SUPPORT_EMAIL: z.string().trim().email().optional().or(z.literal("")),
   PAYSTACK_SECRET_KEY: z
     .string()
     .regex(/^sk_(test|live)_[A-Za-z0-9]+$/)

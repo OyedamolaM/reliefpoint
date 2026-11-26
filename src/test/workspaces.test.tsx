@@ -42,7 +42,7 @@ vi.mock("@/lib/api", () => ({
     state.actions.push({ path, input });
     return path === "auth/mfa-factors"
       ? { factors: state.factors }
-      : path === "admin/customer-invite"
+      : path === "admin/customer-invite" || path === "admin/staff-invite"
         ? { message: "Invitation sent." }
         : {};
   }),
@@ -139,6 +139,32 @@ beforeEach(() => {
   state.factors = [{ id: "factor-1", name: "ReliefPoint" }];
 });
 describe("pharmacy workspaces", () => {
+  it("lets an administrator invite staff by email without an account ID or owner escalation", async () => {
+    render(<AdminPage />);
+    fireEvent.click(
+      within(screen.getByRole("navigation", { name: "Administration" })).getByRole("button", {
+        name: "Settings",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Staff access" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add staff" }));
+    const modal = screen.getByRole("dialog", { name: "Add staff" });
+    expect(within(modal).queryByLabelText("Customer account ID")).not.toBeInTheDocument();
+    expect(within(modal).queryByRole("option", { name: "owner" })).not.toBeInTheDocument();
+    fireEvent.change(within(modal).getByLabelText("Full name"), {
+      target: { value: "New Administrator" },
+    });
+    fireEvent.change(within(modal).getByLabelText("Email address"), {
+      target: { value: "admin@example.com" },
+    });
+    fireEvent.click(within(modal).getByRole("button", { name: "Add staff" }));
+    await waitFor(() =>
+      expect(state.actions).toContainEqual({
+        path: "admin/staff-invite",
+        input: { name: "New Administrator", email: "admin@example.com", role: "admin" },
+      }),
+    );
+  });
   it("identifies staff by name and email with separately labelled roles", async () => {
     render(<AdminPage />);
     fireEvent.click(
@@ -197,6 +223,18 @@ describe("pharmacy workspaces", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Refunds" }));
     expect(screen.getByRole("button", { name: "Date filter" })).toBeInTheDocument();
+    fireEvent.click(
+      within(screen.getByRole("navigation", { name: "Administration" })).getByRole("button", {
+        name: "Products",
+      }),
+    );
+    expect(screen.queryByRole("button", { name: "Date filter" })).not.toBeInTheDocument();
+    await waitFor(() => expect(state.calls).toContain("admin/products?page=0&q="));
+    expect(
+      state.calls
+        .filter((path) => path.startsWith("admin/products?"))
+        .every((path) => !path.includes("period=")),
+    ).toBe(true);
   });
   it("shows clear customer columns and sends an invitation without assigning a password", async () => {
     render(<AdminPage />);

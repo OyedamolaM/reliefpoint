@@ -84,6 +84,18 @@ const summaryCards = [
   { key: "prescription_queue", label: "Prescription reviews", section: "prescriptions" },
   { key: "pending_payments", label: "Pending payments", section: "pending_orders" },
 ];
+const dateFilteredSections = [
+  "orders",
+  "pending_orders",
+  "prescriptions",
+  "refunds",
+  "profiles",
+  "blog_posts",
+  "contact_messages",
+  "notification_outbox",
+  "webhook_events",
+  "audit_log",
+];
 export function PhotoUpload({
   value,
   onChange,
@@ -239,11 +251,12 @@ export function AdminPage() {
     "blog_posts",
   ].includes(active);
   const enabled = !!user && hasMfaAccess(user) && accessible.some((s) => s.key === active);
+  const activeDateFilter = dateFilteredSections.includes(active) ? listFilter : "period=all";
   const data = useQuery({
-    queryKey: ["private", "admin", active, page, query, user?.id, listFilter, categoryFilter],
+    queryKey: ["private", "admin", active, page, query, user?.id, activeDateFilter, categoryFilter],
     queryFn: () =>
       api<{ rows: any[]; more: boolean }>(
-        `admin/${active === "pending_orders" ? "orders" : active}?page=${page}&q=${encodeURIComponent(query)}${active === "pending_orders" ? "&view=pending" : ""}${listFilter === "period=all" ? "" : `&${listFilter}`}${active === "products" && categoryFilter ? `&category=${encodeURIComponent(categoryFilter)}` : ""}`,
+        `admin/${active === "pending_orders" ? "orders" : active}?page=${page}&q=${encodeURIComponent(query)}${active === "pending_orders" ? "&view=pending" : ""}${activeDateFilter === "period=all" ? "" : `&${activeDateFilter}`}${active === "products" && categoryFilter ? `&category=${encodeURIComponent(categoryFilter)}` : ""}`,
       ),
     enabled,
     retry: false,
@@ -275,7 +288,6 @@ export function AdminPage() {
   const canWriteBlog = !!user?.roles.some((r) => ["owner", "admin", "editor"].includes(r));
   const editable =
     (active !== "blog_posts" || canWriteBlog) &&
-    (active !== "staff_roles" || !!user?.roles.includes("owner")) &&
     [
       "products",
       "categories",
@@ -482,24 +494,16 @@ export function AdminPage() {
                     {(editable || active === "profiles") && (
                       <button className="action-button" onClick={() => setEditing({})}>
                         <Plus size={16} className="mr-2" />{" "}
-                        {active === "profiles" ? "Add customer" : "Add new"}
+                        {active === "profiles"
+                          ? "Add customer"
+                          : active === "staff_roles"
+                            ? "Add staff"
+                            : "Add new"}
                       </button>
                     )}
                   </div>
                 </div>
-                {[
-                  "orders",
-                  "pending_orders",
-                  "prescriptions",
-                  "refunds",
-                  "profiles",
-                  "products",
-                  "blog_posts",
-                  "contact_messages",
-                  "notification_outbox",
-                  "webhook_events",
-                  "audit_log",
-                ].includes(active) && (
+                {dateFilteredSections.includes(active) && (
                   <SalesDateFilter
                     filter={listFilter}
                     onApply={(filter) => {
@@ -514,7 +518,7 @@ export function AdminPage() {
                       {listFilter === "period=all"
                         ? "All dates"
                         : `Filtered by ${new URLSearchParams(listFilter).get("period")}`}
-                      {active === "products" || active === "blog_posts" ? " · Last updated" : ""}
+                      {active === "blog_posts" ? " · Last updated" : ""}
                     </p>
                   </SalesDateFilter>
                 )}
@@ -825,25 +829,27 @@ export function AdminPage() {
                             Retry email
                           </button>
                         )}
-                        {active === "staff_roles" && user.roles.includes("owner") && (
-                          <button
-                            className="mt-3 underline"
-                            onClick={() =>
-                              void send("admin/staff_roles", {
-                                user_id: row.user_id,
-                                role: row.role,
-                                remove: true,
-                              })
-                                .then(() => {
-                                  refresh();
-                                  toast.success("Staff access updated.");
+                        {active === "staff_roles" &&
+                          row.user_id !== user.id &&
+                          (user.roles.includes("owner") || row.role !== "owner") && (
+                            <button
+                              className="mt-3 underline"
+                              onClick={() =>
+                                void send("admin/staff_roles", {
+                                  user_id: row.user_id,
+                                  role: row.role,
+                                  remove: true,
                                 })
-                                .catch(notifyError)
-                            }
-                          >
-                            Remove this role
-                          </button>
-                        )}
+                                  .then(() => {
+                                    refresh();
+                                    toast.success("Staff access updated.");
+                                  })
+                                  .catch(notifyError)
+                              }
+                            >
+                              Remove this role
+                            </button>
+                          )}
                       </article>
                     ))}
                   </div>
@@ -904,18 +910,28 @@ export function AdminPage() {
                   open={!!editing}
                   onClose={() => setEditing(null)}
                   title={
-                    active === "profiles"
-                      ? "Add customer"
-                      : active === "products"
-                        ? editing?.id
-                          ? "Edit product"
-                          : "Add products"
-                        : editing?.id
-                          ? "Edit record"
-                          : "Add record"
+                    active === "staff_roles"
+                      ? "Add staff"
+                      : active === "profiles"
+                        ? "Add customer"
+                        : active === "products"
+                          ? editing?.id
+                            ? "Edit product"
+                            : "Add products"
+                          : editing?.id
+                            ? "Edit record"
+                            : "Add record"
                   }
                 >
-                  {editing && active === "profiles" ? (
+                  {editing && active === "staff_roles" ? (
+                    <StaffInvite
+                      onSaved={() => {
+                        setEditing(null);
+                        refresh();
+                      }}
+                      canGrantOwner={user.roles.includes("owner")}
+                    />
+                  ) : editing && active === "profiles" ? (
                     <CustomerInvite
                       onSaved={() => {
                         setEditing(null);
@@ -1661,6 +1677,54 @@ function CustomerTable({ rows }: { rows: any[] }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function StaffInvite({ onSaved, canGrantOwner }: { onSaved: () => void; canGrantOwner: boolean }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <form
+      className="grid gap-5 md:grid-cols-2"
+      onInvalidCapture={() =>
+        toast.error("Check the highlighted staff details.", { id: "staff-validation" })
+      }
+      onSubmit={async (event) => {
+        event.preventDefault();
+        const values = Object.fromEntries(new FormData(event.currentTarget));
+        setBusy(true);
+        try {
+          const result = await send<{ message: string }>("admin/staff-invite", values);
+          toast.success(result.message);
+          onSaved();
+        } catch (error) {
+          notifyError(error);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <Field label="Full name" name="name" required minLength={2} maxLength={100} />
+      <Field label="Email address" name="email" type="email" required maxLength={180} />
+      <label className="block text-sm font-semibold">
+        Role
+        <select name="role" className="commerce-input mt-2 capitalize" defaultValue="admin">
+          {roles
+            .filter((role) => canGrantOwner || role !== "owner")
+            .map((role) => (
+              <option key={role} value={role}>
+                {role}
+              </option>
+            ))}
+        </select>
+      </label>
+      <p className="text-sm text-slate-500 md:col-span-2">
+        Existing verified accounts receive access. New staff receive an email invitation and must
+        set up an authenticator.
+      </p>
+      <button className="action-button justify-self-start" disabled={busy}>
+        {busy ? "Adding staff…" : "Add staff"}
+      </button>
+    </form>
   );
 }
 

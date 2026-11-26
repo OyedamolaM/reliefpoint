@@ -21,6 +21,7 @@ function setup(staff = true, aal = "aal2") {
   const user = {
     id: userId,
     email: "staff@example.com",
+    email_confirmed_at: at(-60),
     user_metadata: {},
     factors: [{ id: factorId, factor_type: "totp", status: "verified" }],
   };
@@ -132,12 +133,56 @@ function setup(staff = true, aal = "aal2") {
   return { ctx, auth, user, record, profile, grants, cookies, updates };
 }
 beforeEach(() => {
+  vi.stubEnv("SUPPORT_USER_ID", "");
+  vi.stubEnv("SUPPORT_EMAIL", "");
   vi.useFakeTimers();
   vi.setSystemTime(now);
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllEnvs();
+});
 
 describe("session lifetime and remembered MFA", () => {
+  it("restores owner access for the configured verified account only after MFA", async () => {
+    const { ctx, grants } = setup(false, "aal1");
+    vi.stubEnv("SUPPORT_USER_ID", userId);
+    vi.stubEnv("SUPPORT_EMAIL", "staff@example.com");
+    expect(await requireStaff(ctx, ["owner", "admin"])).toMatchObject({
+      roles: ["owner"],
+      environmentSupport: true,
+    });
+    expect(ctx.db.rpc).toHaveBeenCalledWith("recover_owner_access", {
+      p_user: userId,
+      p_email: "staff@example.com",
+      p_session: sessionId,
+      p_mfa_hash: hash("a".repeat(64)),
+    });
+    vi.mocked(ctx.db.rpc).mockClear();
+    grants.length = 0;
+    await expect(requireStaff(ctx, ["owner"])).rejects.toMatchObject({ code: "MFA_REQUIRED" });
+    expect(ctx.db.rpc).not.toHaveBeenCalled();
+    vi.stubEnv("SUPPORT_EMAIL", "");
+    expect(await identity(ctx)).toMatchObject({ roles: [], environmentSupport: false });
+  });
+  it("does not restore owner access in a password recovery session", async () => {
+    const { ctx, record } = setup(false);
+    vi.stubEnv("SUPPORT_USER_ID", userId);
+    vi.stubEnv("SUPPORT_EMAIL", "staff@example.com");
+    record.recovery = true;
+    await expect(requireStaff(ctx, ["owner"])).rejects.toMatchObject({ code: "MFA_REQUIRED" });
+    expect(ctx.db.rpc).not.toHaveBeenCalled();
+  });
+  it("fails closed when the database cannot restore and audit owner access", async () => {
+    const { ctx } = setup(false);
+    vi.stubEnv("SUPPORT_USER_ID", userId);
+    vi.stubEnv("SUPPORT_EMAIL", "staff@example.com");
+    vi.mocked(ctx.db.rpc).mockResolvedValueOnce({
+      data: null,
+      error: { message: "unavailable" },
+    } as any);
+    await expect(requireStaff(ctx, ["owner"])).rejects.toMatchObject({ code: "DATA_UNAVAILABLE" });
+  });
   it.each([500, 503, 429])(
     "does not mistake a provider failure (%s) for signed out",
     async (status) => {

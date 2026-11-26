@@ -27,6 +27,35 @@ const permissions: Record<string, StaffRole[]> = {
   notification_outbox: ["owner", "admin"],
   webhook_events: ["owner", "admin"],
 };
+function requireAdminData<T>(
+  ctx: Context,
+  resource: string,
+  result: { data: T; error: unknown },
+): NonNullable<T> {
+  if (result.error) {
+    const rawCode =
+      typeof result.error === "object" && "code" in result.error
+        ? String(result.error.code)
+        : "UNKNOWN";
+    const code = /^[A-Z0-9]{3,12}$/.test(rawCode) ? rawCode : "UNKNOWN";
+    console.error(
+      JSON.stringify({
+        event: "admin_data_failure",
+        requestId: ctx.headers?.get("X-Request-Id") ?? undefined,
+        resource,
+        code,
+      }),
+    );
+    if (["PGRST202", "42883", "42P01", "42703"].includes(code)) {
+      throw new AppError(
+        "ADMIN_UPDATE_REQUIRED",
+        "This section needs a database update. Please ask the website administrator to finish setup.",
+        503,
+      );
+    }
+  }
+  return requireDb(result);
+}
 export async function adminDashboard(ctx: Context, params = new URLSearchParams()) {
   await requireStaff(ctx, ["owner", "admin"]);
   let range;
@@ -64,7 +93,9 @@ export async function adminList(
     }
   }
   if (["orders", "prescriptions", "refunds"].includes(resource)) {
-    return requireDb(
+    return requireAdminData(
+      ctx,
+      resource,
       await ctx.db.rpc("admin_order_records", {
         p_resource: resource,
         p_query: term,
@@ -81,7 +112,9 @@ export async function adminList(
     );
   }
   if (resource === "profiles") {
-    return requireDb(
+    return requireAdminData(
+      ctx,
+      resource,
       await ctx.db.rpc("admin_customer_directory", {
         p_query: term,
         p_from: range.from,
@@ -126,7 +159,9 @@ export async function adminList(
       query = query.ilike("name", `%${term}%`);
     if (resource === "blog_posts") query = query.ilike("title", `%${term}%`);
   }
-  const rows = requireDb(
+  const rows = requireAdminData(
+    ctx,
+    resource,
     await query.range(page * 24, page * 24 + 24).returns<Record<string, unknown>[]>(),
   );
   if (resource === "staff_roles") {
@@ -246,6 +281,66 @@ export async function inviteCustomer(ctx: Context, body: unknown) {
   }
   await audit(ctx, actor.id, "customer_invited", "profiles", data.user.id);
   return { message: "Invitation sent. The customer must verify their email and set a password." };
+}
+
+export async function inviteStaff(ctx: Context, body: unknown) {
+  const actor = await requireStaff(ctx, ["owner", "admin"]);
+  const input = z
+    .object({
+      name: z.string().trim().min(2).max(100),
+      email: z
+        .string()
+        .trim()
+        .email()
+        .max(180)
+        .transform((value) => value.toLowerCase()),
+      role: z.enum(roles),
+    })
+    .parse(body);
+  if (input.role === "owner" && !actor.roles.includes("owner"))
+    throw new AppError("OWNER_REQUIRED", "Only the owner can grant owner access.", 403);
+  await rate(ctx, "staff-invite", 10, 3600, actor.id);
+  await rate(ctx, "staff-invite-email", 1, 300, input.email);
+  const existing = checkDb(
+    await ctx.db.rpc("staff_account_by_email", { p_email: input.email }),
+  ) as { id: string; verified: boolean } | null;
+  if (existing && !existing.verified)
+    throw new AppError(
+      "EMAIL_NOT_VERIFIED",
+      "This account must verify its email before staff access can be added.",
+    );
+  let id = existing?.id;
+  if (!id) {
+    const { data, error } = await ctx.db.auth.admin.inviteUserByEmail(input.email, {
+      data: { name: input.name },
+      redirectTo: `${ctx.origin}/api/auth/callback`,
+    });
+    if (error || !data.user)
+      throw new AppError(
+        "INVITE_FAILED",
+        "We couldn’t send the staff invitation. Check the email address or try again later.",
+        503,
+      );
+    id = data.user.id;
+  }
+  const granted = await ctx.db.rpc("manage_staff_role", {
+    p_actor: actor.id,
+    p_user: id,
+    p_role: input.role,
+    p_remove: false,
+  });
+  if (granted.error && !existing)
+    throw new AppError(
+      "STAFF_ACCESS_PENDING",
+      "The invitation was sent, but staff access couldn’t be added. After email verification, add this person again using the same email.",
+      503,
+    );
+  checkDb(granted);
+  return {
+    message: existing
+      ? "Staff access added. They must verify their authenticator to use administration."
+      : "Staff invitation sent. They must verify their email, set a password and set up an authenticator.",
+  };
 }
 export async function adminRecord(ctx: Context, resource: string, id: string) {
   if (!["products", "blog_posts", "categories", "shipping_zones"].includes(resource))
@@ -458,8 +553,6 @@ async function writeAdminRecord(ctx: Context, resource: string, body: unknown, a
       );
     checkDb(await db.from(resource).update(input).eq("id", true));
   } else if (resource === "staff_roles") {
-    if (!actor.roles.includes("owner"))
-      throw new AppError("OWNER_REQUIRED", "Only the owner can change staff access.", 403);
     const input = z
       .object({
         user_id: z.string().uuid(),
@@ -467,12 +560,13 @@ async function writeAdminRecord(ctx: Context, resource: string, body: unknown, a
         remove: z.boolean().default(false),
       })
       .parse(body);
-    if (input.user_id === actor.id && input.role === "owner" && input.remove)
-      throw new AppError("OWNER_REQUIRED", "You cannot remove your own owner access.");
     checkDb(
-      input.remove
-        ? await db.from(resource).delete().eq("user_id", input.user_id).eq("role", input.role)
-        : await db.from(resource).upsert({ user_id: input.user_id, role: input.role }),
+      await db.rpc("manage_staff_role", {
+        p_actor: actor.id,
+        p_user: input.user_id,
+        p_role: input.role,
+        p_remove: input.remove,
+      }),
     );
     id = input.user_id;
   } else if (resource === "contact_messages") {
