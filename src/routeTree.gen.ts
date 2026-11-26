@@ -26,6 +26,7 @@ import { Route as HealthTipsIndexRouteImport } from './routes/health-tips.index'
 import { Route as HealthTipsSlugRouteImport } from './routes/health-tips.$slug'
 import { Route as OrdersIdRouteImport } from './routes/orders.$id'
 import { Route as ProductsSlugRouteImport } from './routes/products.$slug'
+import { Route as AdminOrdersIdRouteImport } from './routes/admin_.orders.$id'
 import { Route as HealthTipsPreviewIdRouteImport } from './routes/health-tips.preview.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -113,6 +114,11 @@ const ProductsSlugRoute = ProductsSlugRouteImport.update({
   path: '/products/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminOrdersIdRoute = AdminOrdersIdRouteImport.update({
+  id: '/admin_/orders/$id',
+  path: '/admin/orders/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HealthTipsPreviewIdRoute = HealthTipsPreviewIdRouteImport.update({
   id: '/health-tips/preview/$id',
   path: '/health-tips/preview/$id',
@@ -137,6 +143,7 @@ export interface FileRoutesByFullPath {
   '/orders/$id': typeof OrdersIdRoute
   '/products/$slug': typeof ProductsSlugRoute
   '/health-tips/': typeof HealthTipsIndexRoute
+  '/admin/orders/$id': typeof AdminOrdersIdRoute
   '/health-tips/preview/$id': typeof HealthTipsPreviewIdRoute
 }
 export interface FileRoutesByTo {
@@ -157,6 +164,7 @@ export interface FileRoutesByTo {
   '/orders/$id': typeof OrdersIdRoute
   '/products/$slug': typeof ProductsSlugRoute
   '/health-tips': typeof HealthTipsIndexRoute
+  '/admin/orders/$id': typeof AdminOrdersIdRoute
   '/health-tips/preview/$id': typeof HealthTipsPreviewIdRoute
 }
 export interface FileRoutesById {
@@ -178,6 +186,7 @@ export interface FileRoutesById {
   '/orders/$id': typeof OrdersIdRoute
   '/products/$slug': typeof ProductsSlugRoute
   '/health-tips/': typeof HealthTipsIndexRoute
+  '/admin_/orders/$id': typeof AdminOrdersIdRoute
   '/health-tips/preview/$id': typeof HealthTipsPreviewIdRoute
 }
 export interface FileRouteTypes {
@@ -200,6 +209,7 @@ export interface FileRouteTypes {
     | '/orders/$id'
     | '/products/$slug'
     | '/health-tips/'
+    | '/admin/orders/$id'
     | '/health-tips/preview/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -220,6 +230,7 @@ export interface FileRouteTypes {
     | '/orders/$id'
     | '/products/$slug'
     | '/health-tips'
+    | '/admin/orders/$id'
     | '/health-tips/preview/$id'
   id:
     | '__root__'
@@ -240,6 +251,7 @@ export interface FileRouteTypes {
     | '/orders/$id'
     | '/products/$slug'
     | '/health-tips/'
+    | '/admin_/orders/$id'
     | '/health-tips/preview/$id'
   fileRoutesById: FileRoutesById
 }
@@ -261,6 +273,7 @@ export interface RootRouteChildren {
   OrdersIdRoute: typeof OrdersIdRoute
   ProductsSlugRoute: typeof ProductsSlugRoute
   HealthTipsIndexRoute: typeof HealthTipsIndexRoute
+  AdminOrdersIdRoute: typeof AdminOrdersIdRoute
   HealthTipsPreviewIdRoute: typeof HealthTipsPreviewIdRoute
 }
 
@@ -385,6 +398,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProductsSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin_/orders/$id': {
+      id: '/admin_/orders/$id'
+      path: '/admin/orders/$id'
+      fullPath: '/admin/orders/$id'
+      preLoaderRoute: typeof AdminOrdersIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/health-tips/preview/$id': {
       id: '/health-tips/preview/$id'
       path: '/health-tips/preview/$id'
@@ -413,6 +433,7 @@ const rootRouteChildren: RootRouteChildren = {
   OrdersIdRoute: OrdersIdRoute,
   ProductsSlugRoute: ProductsSlugRoute,
   HealthTipsIndexRoute: HealthTipsIndexRoute,
+  AdminOrdersIdRoute: AdminOrdersIdRoute,
   HealthTipsPreviewIdRoute: HealthTipsPreviewIdRoute,
 }
 export const routeTree = rootRouteImport

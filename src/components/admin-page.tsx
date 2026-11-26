@@ -11,7 +11,7 @@ import { uploadFile } from "@/lib/upload";
 import { useState, useEffect, useId, useRef, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { api, send, notifyError } from "@/lib/api";
 import { slugify, roles, productSchema, type StaffRole } from "@/lib/contracts";
 import { nigeriaDate, salesPeriod } from "@/lib/sales-period";
@@ -216,11 +216,25 @@ export function PhotoUpload({
     </div>
   );
 }
-export function AdminPage() {
+export function AdminPage({
+  selectedOrderId,
+  initialSection,
+}: { selectedOrderId?: string; initialSection?: string } = {}) {
+  const routerNavigate = useNavigate();
   const queryClient = useQueryClient();
   const { user, loading } = useAccount();
-  const [section, setSection] = useState("overview");
-  const [group, setGroup] = useState("overview");
+  const [section, setSection] = useState(
+    selectedOrderId
+      ? "orders"
+      : workspaceGroups.find((group) => group.key === initialSection)?.resources[0] || "overview",
+  );
+  const [group, setGroup] = useState(
+    selectedOrderId
+      ? "orders"
+      : workspaceGroups.some((group) => group.key === initialSection)
+        ? initialSection!
+        : "overview",
+  );
   const [bulk, setBulk] = useState(false);
   const [stockProduct, setStockProduct] = useState<any>(null);
   const [deleteDraft, setDeleteDraft] = useState<any>(null);
@@ -233,7 +247,6 @@ export function AdminPage() {
     setPage(0);
   }, [debouncedSearch]);
   const [editing, setEditing] = useState<any>(null);
-  const [orderId, setOrderId] = useState("");
   const [listFilter, setListFilter] = useState("period=all");
   const [salesFilter, setSalesFilter] = useState(
     () => `period=month&month=${nigeriaDate().slice(0, 7)}`,
@@ -251,6 +264,10 @@ export function AdminPage() {
     workspaceGroups.find((g) => g.key === group)?.resources.includes(s.key),
   );
   const navigate = (key: string) => {
+    if (selectedOrderId) {
+      void routerNavigate({ to: "/admin", search: { section: key } });
+      return;
+    }
     setGroup(key);
     setSection(
       workspaceGroups
@@ -261,7 +278,6 @@ export function AdminPage() {
     setSearch("");
     setQuery("");
     setEditing(null);
-    setOrderId("");
   };
   const active = section || accessible[0]?.key || "orders";
   const searchable = [
@@ -283,7 +299,7 @@ export function AdminPage() {
         `admin/${active === "pending_orders" ? "orders" : active}?page=${page}&q=${encodeURIComponent(query)}${active === "pending_orders" ? "&view=pending" : ""}${activeDateFilter === "period=all" ? "" : `&${activeDateFilter}`}`,
         orderReadOptions,
       ),
-    enabled,
+    enabled: enabled && !selectedOrderId,
     refetchInterval: group === "orders" ? orderRefreshInterval : false,
     refetchIntervalInBackground: false,
     retry: false,
@@ -379,6 +395,17 @@ export function AdminPage() {
         <div>
           <h1 className="mb-6 text-3xl font-bold">Secure staff access</h1>
           <AuthenticatorPanel />
+        </div>
+      ) : selectedOrderId ? (
+        <div className="mx-auto max-w-5xl space-y-6">
+          <Link
+            to="/admin"
+            search={{ section: "orders" }}
+            className="inline-flex min-h-10 items-center rounded-lg border border-brand/20 bg-white px-4 py-2 text-sm font-semibold text-brand"
+          >
+            Back to orders
+          </Link>
+          <OrderView key={selectedOrderId} id={selectedOrderId} admin />
         </div>
       ) : (
         <div>
@@ -491,7 +518,6 @@ export function AdminPage() {
                       setSection(s.key);
                       setPage(0);
                       setEditing(null);
-                      setOrderId("");
                       setQuery("");
                       setSearch("");
                     }}
@@ -655,7 +681,12 @@ export function AdminPage() {
                             {row.order_id && (
                               <button
                                 className="inline-flex min-h-10 items-center rounded-lg bg-brand px-4 py-2 font-semibold text-white hover:brightness-110"
-                                onClick={() => setOrderId(row.order_id)}
+                                onClick={() =>
+                                  void routerNavigate({
+                                    to: "/admin/orders/$id",
+                                    params: { id: row.order_id },
+                                  })
+                                }
                               >
                                 View order
                               </button>
@@ -663,7 +694,12 @@ export function AdminPage() {
                             {["orders", "pending_orders"].includes(active) && (
                               <button
                                 className="inline-flex min-h-10 items-center rounded-lg bg-brand px-4 py-2 font-semibold text-white hover:brightness-110"
-                                onClick={() => setOrderId(row.id)}
+                                onClick={() =>
+                                  void routerNavigate({
+                                    to: "/admin/orders/$id",
+                                    params: { id: row.id },
+                                  })
+                                }
                               >
                                 {active === "pending_orders" ? "Review payment" : "View order"}
                               </button>
@@ -902,28 +938,6 @@ export function AdminPage() {
                   </button>
                 </WorkspaceModal>
                 <WorkspaceModal
-                  open={!!orderId}
-                  onClose={() => setOrderId("")}
-                  title={active === "pending_orders" ? "Payment details" : "Order details"}
-                >
-                  {orderId && (
-                    <OrderView
-                      id={orderId}
-                      admin
-                      onUpdate={(status) => {
-                        refresh();
-                        if (status && ["paid", "partially_refunded", "refunded"].includes(status)) {
-                          setSection("orders");
-                          setPage(0);
-                          setSearch("");
-                          setQuery("");
-                          setListFilter("period=all");
-                        }
-                      }}
-                    />
-                  )}
-                </WorkspaceModal>
-                <WorkspaceModal
                   open={!!editing}
                   onClose={() => setEditing(null)}
                   size={
@@ -957,7 +971,7 @@ export function AdminPage() {
                             : "pending_orders",
                         );
                         setPage(0);
-                        setOrderId(id);
+                        void routerNavigate({ to: "/admin/orders/$id", params: { id } });
                       }}
                     />
                   ) : editing && active === "categories" ? (
