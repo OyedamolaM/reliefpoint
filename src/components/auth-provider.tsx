@@ -12,6 +12,7 @@ import { api, send, ClientError } from "@/lib/api";
 import { toast } from "sonner";
 import type { StaffRole } from "@/lib/contracts";
 import { inactivityMs } from "@/lib/session-policy";
+import { clearOtherDelivery, clearSavedDelivery } from "@/lib/cookie-preferences";
 export type AccountUser = {
   id: string;
   name: string;
@@ -59,11 +60,13 @@ export function AuthProvider({ children, enabled }: { children: ReactNode; enabl
         const result = await api<{ user: AccountUser | null }>("auth/session");
         if (version.current !== requestVersion) return;
         failureNotified.current = false;
+        clearOtherDelivery(result.user?.id ?? "guest");
         setUser(result.user);
         if (!result.user) query.removeQueries({ queryKey: ["private"] });
       } catch (error) {
         if (version.current !== requestVersion) return;
         if (error instanceof ClientError && error.status === 401) {
+          clearSavedDelivery();
           setUser(null);
           query.removeQueries({ queryKey: ["private"] });
         } else if (!failureNotified.current) {
@@ -144,6 +147,7 @@ export function AuthProvider({ children, enabled }: { children: ReactNode; enabl
       }
     };
     const rejected = () => {
+      clearSavedDelivery();
       version.current += 1;
       setUser(null);
       query.removeQueries({ queryKey: ["private"] });
@@ -186,6 +190,7 @@ export function AuthProvider({ children, enabled }: { children: ReactNode; enabl
     try {
       await send(all ? "auth/signout-all" : "auth/signout", {});
     } finally {
+      clearSavedDelivery();
       version.current += 1;
       setUser(null);
       query.removeQueries({ queryKey: ["private"] });

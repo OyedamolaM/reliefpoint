@@ -3,6 +3,7 @@ import { fireEvent, screen, cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CommerceProvider, useCommerce } from "@/components/commerce-provider";
 import { CART_STORAGE_KEY, products } from "@/lib/commerce";
+import { saveCookiePreferences } from "@/lib/cookie-preferences";
 
 beforeEach(() => localStorage.clear());
 afterEach(cleanup);
@@ -32,6 +33,38 @@ function deliveryDetails() {
   fireEvent.change(screen.getByLabelText("LGA / City"), { target: { value: "Ikeja" } });
 }
 describe("frontend checkout", () => {
+  it("navigates completed steps and invalidates payment after delivery or basket changes", () => {
+    render(
+      <CommerceProvider>
+        <Harness />
+      </CommerceProvider>,
+    );
+    fireEvent.click(screen.getByText("Add vitamin"));
+    expect(screen.getByRole("button", { name: "2. Delivery" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "3. Payment" })).toBeDisabled();
+    fireEvent.click(screen.getByText("Proceed to checkout"));
+    deliveryDetails();
+    fireEvent.click(screen.getByText("Continue to payment"));
+    expect(screen.getByRole("button", { name: "3. Payment" })).toHaveAttribute(
+      "aria-current",
+      "step",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "1. Cart" }));
+    fireEvent.click(screen.getByRole("button", { name: "3. Payment" }));
+    expect(screen.getByText("Review checkout · ₦10,900")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "2. Delivery" }));
+    expect(screen.getByLabelText("Email")).toHaveValue("customer@example.com");
+    fireEvent.change(screen.getByLabelText("Street address"), {
+      target: { value: "2 Other Street" },
+    });
+    expect(screen.getByRole("button", { name: "3. Payment" })).toBeDisabled();
+    fireEvent.click(screen.getByText("Continue to payment"));
+    fireEvent.click(screen.getByRole("button", { name: "1. Cart" }));
+    fireEvent.click(screen.getByLabelText("Increase Vitamin C 1000 mg"));
+    expect(screen.getByRole("button", { name: "3. Payment" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "2. Delivery" }));
+    expect(screen.getByLabelText("Street address")).toHaveValue("2 Other Street");
+  });
   it("reviews delivery and payment without claiming a payment or clearing the basket", () => {
     render(
       <CommerceProvider>
@@ -55,11 +88,11 @@ describe("frontend checkout", () => {
       "href",
       expect.stringContaining("bank_transfer"),
     );
-    expect(localStorage.getItem(CART_STORAGE_KEY)).not.toContain("customer@example.com");
+    expect(localStorage.getItem(CART_STORAGE_KEY) ?? "").not.toContain("customer@example.com");
     fireEvent.click(screen.getByText("Continue shopping"));
     fireEvent.click(screen.getByText("Open cart"));
     fireEvent.click(screen.getByText("Proceed to checkout"));
-    expect(screen.getByLabelText("Email")).toHaveValue("");
+    expect(screen.getByLabelText("Email")).toHaveValue("customer@example.com");
   });
   it("requires a valid prescription and resets the area after a state change", () => {
     render(
@@ -92,6 +125,7 @@ describe("frontend checkout", () => {
     expect(screen.getByText("₦9,300")).toBeInTheDocument();
   });
   it("restores quantities across a page remount", () => {
+    saveCookiePreferences(true);
     const first = render(
       <CommerceProvider>
         <Harness />

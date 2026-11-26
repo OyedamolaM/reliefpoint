@@ -13,6 +13,14 @@ import {
   Heart,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { useRef } from "react";
+import {
+  clearSavedBasket,
+  saveCookiePreferences,
+  useCookiePreferences,
+} from "@/lib/cookie-preferences";
+import { useDeliveryDraft } from "@/hooks/use-delivery-draft";
+import { CheckoutProgress } from "./checkout-progress";
 import { toast } from "sonner";
 import { useAccount } from "./auth-provider";
 import { LiveCheckout } from "./live-checkout";
@@ -87,6 +95,8 @@ export function CommerceProvider({
   categoryNames?: string[];
 }) {
   const account = useAccount();
+  const rememberBasket = useCookiePreferences();
+  const restoredStorage = useRef(false);
   const [catalog, setCatalog] = useState(initialCatalog);
   const [syncedUser, setSyncedUser] = useState<string | null>(null);
   const mergeCatalog = (incoming: Product[]) =>
@@ -100,9 +110,12 @@ export function CommerceProvider({
   const [profile, setProfile] = useState<ShoppingProfile | null>(null);
   const [product, setProduct] = useState<Product | null>(null);
   const [step, setStep] = useState(0);
-  const [state, setState] = useState("");
-  const [lga, setLga] = useState("");
-  const [contact, setContact] = useState({ name: "", email: "", phone: "", address: "", note: "" });
+  const deliveryDraft = useDeliveryDraft(account, !backendEnabled);
+  const { state, setState, area: lga, setArea: setLga, contact, setContact } = deliveryDraft;
+  const [deliveryStarted, setDeliveryStarted] = useState(false);
+  const [deliveryComplete, setDeliveryComplete] = useState(false);
+  const [checkoutLocked, setCheckoutLocked] = useState(false);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
   const [payment, setPayment] = useState("card");
@@ -110,8 +123,22 @@ export function CommerceProvider({
   const quote = totals(cart, state, lga);
   const needsPrescription = cart.some((item) => item.product.prescription);
   const count = cart.reduce((n, item) => n + item.quantity, 0);
+  const basketKey = JSON.stringify(cart.map((i) => [i.product.id, i.quantity, i.product.price]));
   useEffect(() => {
+    setDeliveryComplete(false);
+  }, [basketKey]);
+  useEffect(() => {
+    if (!backendEnabled) setDeliveryComplete(false);
+  }, [contact, state, lga, file, backendEnabled]);
+  useEffect(() => {
+    if (rememberBasket === undefined || restoredStorage.current) return undefined;
     if (backendEnabled && account.loading) return undefined;
+    restoredStorage.current = true;
+    if (rememberBasket !== true) {
+      clearSavedBasket();
+      setReady(true);
+      return undefined;
+    }
     if (backendEnabled) {
       let active = true;
       try {
@@ -124,7 +151,12 @@ export function CommerceProvider({
           return undefined;
         }
         // Account baskets are restored from the database; their local mirror must not be merged twice.
-        if(owner&&owner===account.user?.id){setCart([]);setWishlist([]);setReady(true);return undefined;}
+        if (owner && owner === account.user?.id) {
+          setCart([]);
+          setWishlist([]);
+          setReady(true);
+          return undefined;
+        }
         const rawCart = permitted ? localStorage.getItem(CART_STORAGE_KEY) : null;
         const rawWishlist = permitted ? localStorage.getItem(WISHLIST_STORAGE_KEY) : null;
         const basket: unknown = JSON.parse(rawCart ?? "[]");
@@ -163,7 +195,7 @@ export function CommerceProvider({
     }
     setReady(true);
     return undefined;
-  }, [backendEnabled, account.loading]);
+  }, [backendEnabled, account.loading, rememberBasket]);
   useEffect(() => {
     setProfile(account.user ? { name: account.user.name, email: account.user.email } : null);
     if (!account.user) {
@@ -235,6 +267,7 @@ export function CommerceProvider({
   }, [error]);
   useEffect(() => {
     if (
+      rememberBasket !== true ||
       !ready ||
       (backendEnabled &&
         (account.loading ||
@@ -252,18 +285,34 @@ export function CommerceProvider({
     } catch {
       /* The current visit continues without persistence. */
     }
-  }, [cart, wishlist, ready, account.user?.id, account.loading, syncedUser, backendEnabled]);
+  }, [
+    cart,
+    wishlist,
+    ready,
+    account.user?.id,
+    account.loading,
+    syncedUser,
+    backendEnabled,
+    rememberBasket,
+  ]);
   const clearContact = () => {
-    setContact({ name: "", email: "", phone: "", address: "", note: "" });
+    deliveryDraft.clear();
     setFile(null);
-    setState("");
-    setLga("");
     setConsent(false);
+    setDeliveryStarted(false);
+    setDeliveryComplete(false);
+    setCheckoutLocked(false);
+    setCheckoutBusy(false);
   };
   const closeCart = () => {
     setCartOpen(false);
     setError("");
-    clearContact();
+    setFile(null);
+    setConsent(false);
+    setDeliveryStarted(false);
+    setDeliveryComplete(false);
+    setCheckoutLocked(false);
+    setCheckoutBusy(false);
     setStep(0);
   };
   const openCart = () => {
@@ -310,6 +359,7 @@ export function CommerceProvider({
     );
   };
   const startDelivery = () => {
+    setDeliveryStarted(true);
     if (profile) setContact((c) => ({ ...c, name: profile.name, email: profile.email }));
     setStep(1);
     setError("");
@@ -330,6 +380,7 @@ export function CommerceProvider({
       return;
     }
     setError("");
+    setDeliveryComplete(true);
     setStep(2);
   };
   const inquiry = `Hello ReliefPoint, please confirm availability and delivery for my basket:\n${cart.map(({ product: p, quantity }) => `${p.name} × ${quantity} — ${formatNaira(p.price * quantity)}`).join("\n")}\nDelivery area: ${lga}, ${state}\nEstimated total: ${formatNaira(quote.total)}\nPayment preference: ${payment}. Please confirm the final price before payment.`;
@@ -517,17 +568,15 @@ export function CommerceProvider({
             </SheetDescription>
           </SheetHeader>
           {cart.length > 0 && step < 3 && (
-            <ol aria-label="Checkout progress" className="my-4 flex gap-2 text-sm">
-              {["Cart", "Delivery", "Payment"].map((label, i) => (
-                <li
-                  key={label}
-                  aria-current={step === i ? "step" : undefined}
-                  className={`flex-1 border-b-2 pb-3 ${step === i ? "border-brand font-bold" : "text-muted-foreground"}`}
-                >
-                  {i + 1}. {label}
-                </li>
-              ))}
-            </ol>
+            <CheckoutProgress
+              step={step}
+              available={deliveryComplete ? 2 : deliveryStarted ? 1 : 0}
+              busy={checkoutBusy || checkoutLocked}
+              onChange={(next) => {
+                setError("");
+                setStep(next);
+              }}
+            />
           )}
           {step === 0 &&
             (cart.length ? (
@@ -623,7 +672,20 @@ export function CommerceProvider({
                 <Button onClick={closeCart}>Start shopping</Button>
               </div>
             ))}
-          {backendEnabled && step > 0 && <LiveCheckout cart={cart} onBack={() => setStep(0)} />}
+          {backendEnabled && deliveryStarted && (
+            <div hidden={step === 0}>
+              <LiveCheckout
+                key={account.user?.id ?? "guest"}
+                cart={cart}
+                activeStep={step === 2 ? 2 : 1}
+                onStepChange={setStep}
+                onBack={() => setStep(0)}
+                onReadyChange={setDeliveryComplete}
+                onLockedChange={setCheckoutLocked}
+                onBusyChange={setCheckoutBusy}
+              />
+            </div>
+          )}
           {!backendEnabled && step === 1 && (
             <form
               className="space-y-4"
@@ -730,6 +792,15 @@ export function CommerceProvider({
                   value={contact.note}
                   onChange={(e) => setContact({ ...contact, note: e.target.value })}
                 />
+              </label>
+              <label className="flex items-start gap-2 text-sm leading-6">
+                <input
+                  type="checkbox"
+                  className="mt-1.5 accent-brand"
+                  checked={deliveryDraft.remember === true}
+                  onChange={(e) => saveCookiePreferences(e.target.checked)}
+                />
+                Remember my basket and delivery details on this browser for my next visit.
               </label>
               {needsPrescription && (
                 <label className="block rounded-xl border border-dashed border-brand/40 p-4 text-sm">

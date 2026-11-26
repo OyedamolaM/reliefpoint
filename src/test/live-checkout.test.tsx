@@ -96,8 +96,7 @@ describe("server-backed checkout", () => {
       ),
     );
     render(<LiveCheckout cart={basket} onBack={() => {}} />);
-    expect(screen.getByLabelText("Delivery area")).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("State / FCT"), { target: { value: "Lagos" } });
+    expect(screen.getByLabelText("State / FCT")).toHaveValue("Lagos");
     await screen.findByRole("option", { name: "Ikeja — Oregun" });
     fireEvent.change(screen.getByLabelText("Delivery area"), {
       target: { value: deliveryZone.id },
