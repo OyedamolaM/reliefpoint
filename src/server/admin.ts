@@ -1,3 +1,5 @@
+import { validSocialUrl } from "@/lib/contact-links";
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { checkoutSchema, postSchema, productSchema, roles, type StaffRole } from "@/lib/contracts";
 import { AppError, checkDb, requireDb } from "./errors";
@@ -191,14 +193,12 @@ export async function adminList(
   const projection: string =
     resource === "blog_posts"
       ? "id,title,slug,summary,category,cover,status,author_name,reviewer_id,reviewed_at,published_at,updated_at"
-      : resource === "products" && params.get("export") !== "1"
+      : resource === "products"
         ? "id,name,slug,category,brand,price_kobo,image,active,prescription,deal,updated_at,available"
         : resource === "notification_outbox"
           ? "id,email,subject,status,attempts,next_attempt,created_at"
           : "*";
-  let query = ctx.db
-    .from(resource === "products" && params.get("export") !== "1" ? "catalog" : resource)
-    .select(projection);
+  let query = ctx.db.from(resource === "products" ? "catalog" : resource).select(projection);
   const dateColumn =
     resource === "blog_posts" || resource === "products" ? "updated_at" : "created_at";
   if (
@@ -285,6 +285,12 @@ export async function adminList(
 }
 
 export async function inviteCustomer(ctx: Context, body: unknown) {
+  return saveCustomer(ctx, body, true);
+}
+export async function addCustomer(ctx: Context, body: unknown) {
+  return saveCustomer(ctx, body, false);
+}
+async function saveCustomer(ctx: Context, body: unknown, invite: boolean) {
   const actor = await requireStaff(ctx, ["owner", "admin", "support"]);
   const input = z
     .object({
@@ -303,20 +309,26 @@ export async function inviteCustomer(ctx: Context, body: unknown) {
       state: z.string().trim().max(80).default(""),
       lga: z.string().trim().max(120).default(""),
     })
-    .refine((value) => !value.address || (value.state && value.lga), {
-      message: "Add the state and LGA for this address.",
-    })
     .parse(body);
-  await rate(ctx, "customer-invite", 10, 3600, actor.id);
+  await rate(ctx, "customer-create", 30, 3600, actor.id);
   await rate(ctx, "customer-invite-email", 1, 300, input.email);
-  const { data, error } = await ctx.db.auth.admin.inviteUserByEmail(input.email, {
-    data: { name: input.name, phone: input.phone },
-    redirectTo: `${ctx.origin}/api/auth/callback`,
-  });
+  const { data, error } = invite
+    ? await ctx.db.auth.admin.inviteUserByEmail(input.email, {
+        data: { name: input.name, phone: input.phone },
+        redirectTo: `${ctx.origin}/api/auth/callback`,
+      })
+    : await ctx.db.auth.admin.createUser({
+        email: input.email,
+        password: randomBytes(48).toString("base64url"),
+        email_confirm: false,
+        user_metadata: { name: input.name, phone: input.phone },
+      });
   if (error || !data.user)
     throw new AppError(
-      "INVITE_FAILED",
-      "We couldn’t send the invitation. Check whether this email already has an account, or try again later.",
+      invite ? "INVITE_FAILED" : "CUSTOMER_CREATE_FAILED",
+      invite
+        ? "We couldn’t send the invitation. Check whether this email already has an account, or try again later."
+        : "We couldn’t add this customer. Check whether the email already has an account.",
       503,
     );
   const saved = await ctx.db
@@ -325,7 +337,7 @@ export async function inviteCustomer(ctx: Context, body: unknown) {
   if (saved.error)
     throw new AppError(
       "INVITE_DETAILS_FAILED",
-      "The invitation was sent, but customer details couldn’t be saved. Refresh the customer list before trying again.",
+      "Customer details couldn’t be saved. Refresh the customer list before trying again.",
       503,
     );
   if (input.address) {
@@ -340,12 +352,29 @@ export async function inviteCustomer(ctx: Context, body: unknown) {
     if (address.error)
       throw new AppError(
         "INVITE_ADDRESS_FAILED",
-        "The invitation was sent, but the address couldn’t be saved. The customer can add it after signing in.",
+        "The customer was added, but the address couldn’t be saved. Refresh the customer list before trying again.",
         503,
       );
   }
-  await audit(ctx, actor.id, "customer_invited", "profiles", data.user.id);
-  return { message: "Invitation sent. The customer must verify their email and set a password." };
+  await audit(
+    ctx,
+    actor.id,
+    invite ? "customer_invited" : "customer_created",
+    "profiles",
+    data.user.id,
+  );
+  return {
+    message: invite ? "Invitation sent." : "Customer added.",
+    customer: {
+      id: data.user.id,
+      name: input.name,
+      email: input.email,
+      phone: input.phone,
+      addresses: input.address
+        ? [{ address: input.address, state: input.state, lga: input.lga }]
+        : [],
+    },
+  };
 }
 
 export async function inviteStaff(ctx: Context, body: unknown) {
@@ -525,13 +554,19 @@ async function writeAdminRecord(ctx: Context, resource: string, body: unknown, a
         }),
       );
   } else if (resource === "categories") {
+    await rate(ctx, "category-write", 30, 60, actor.id);
     const input = z
-      .object({ id: z.string().uuid().optional(), name: z.string().trim().min(2).max(80) })
+      .object({
+        id: z.string().uuid().optional(),
+        name: z.string().trim().min(2).max(80),
+        product_ids: z.array(z.string().uuid()).max(500).default([]),
+      })
       .parse(body);
     id = requireDb(
-      await db.rpc("save_category", {
+      await db.rpc("save_category_products", {
         p_id: input.id ?? null,
         p_name: input.name,
+        p_products: input.product_ids,
         p_actor: actor.id,
       }),
     );
@@ -539,6 +574,7 @@ async function writeAdminRecord(ctx: Context, resource: string, body: unknown, a
     const input = z
       .object({
         id: z.string().uuid().optional(),
+        fulfillment_method: z.enum(["delivery", "pickup"]).default("delivery"),
         state: z.string().trim().min(2).max(80).transform(deliveryState),
         lga: z.string().trim().min(2).max(80),
         area: z.string().trim().max(100),
@@ -548,6 +584,11 @@ async function writeAdminRecord(ctx: Context, resource: string, body: unknown, a
         active: z.boolean(),
       })
       .parse(body);
+    if (
+      input.fulfillment_method === "pickup" &&
+      (input.fee_kobo !== 0 || input.free_over_kobo !== null || input.area.length < 3)
+    )
+      throw new AppError("PICKUP_SETTINGS", "Add a pickup location and use a zero pickup fee.");
     id = requireDb(await db.from(resource).upsert(input).select("id").single()).id;
   } else if (resource === "inventory_batches") {
     const input = z
@@ -583,6 +624,21 @@ async function writeAdminRecord(ctx: Context, resource: string, body: unknown, a
     const input = z
       .object({
         public_data: z.object({
+          instagram_url: z
+            .string()
+            .refine(
+              (v) => !v || validSocialUrl(v, "instagram.com"),
+              "Enter an Instagram HTTPS link.",
+            )
+            .optional(),
+          facebook_url: z
+            .string()
+            .refine((v) => !v || validSocialUrl(v, "facebook.com"), "Enter a Facebook HTTPS link.")
+            .optional(),
+          tiktok_url: z
+            .string()
+            .refine((v) => !v || validSocialUrl(v, "tiktok.com"), "Enter a TikTok HTTPS link.")
+            .optional(),
           address: z.string().max(500),
           opening_hours: z.string().max(500),
           pcn_logo: z.string().url().or(z.literal("")),
@@ -654,6 +710,7 @@ export async function adminAction(ctx: Context, action: string, body: unknown) {
       amount: z.number().int().optional(),
       courier: z.string().max(100).optional(),
       tracking_reference: z.string().max(200).optional(),
+      estimated_delivery: z.string().trim().max(200).optional(),
       request_id: z.string().uuid().optional(),
     })
     .parse(body);
@@ -690,18 +747,39 @@ export async function adminAction(ctx: Context, action: string, body: unknown) {
     await audit(ctx, actor.id, status, "prescription", input.id);
   } else if (action === "delivery") {
     const actor = await requireStaff(ctx, ["owner", "admin", "fulfillment"]);
+    await rate(ctx, "staff-tracking", 20, 60, actor.id);
     const status = z.enum(["processing", "dispatched", "delivered"]).parse(input.value);
     checkDb(
-      await db.rpc("advance_delivery", {
+      await db.rpc("update_order_tracking", {
         p_order: input.id,
         p_status: status,
         p_note: input.note ?? "",
         p_courier: input.courier ?? "",
         p_tracking: input.tracking_reference ?? "",
+        p_estimate: input.estimated_delivery ?? "",
+        p_request: z.string().uuid().parse(input.request_id),
         p_actor: actor.id,
       }),
     );
-    await audit(ctx, actor.id, status, "order", input.id);
+    return { message: "Tracking updated. Customer email queued." };
+  } else if (action === "internal-note") {
+    const actor = await requireStaff(ctx, [
+      "owner",
+      "admin",
+      "pharmacist",
+      "fulfillment",
+      "support",
+    ]);
+    await rate(ctx, "staff-order-note", 20, 60, actor.id);
+    checkDb(
+      await db.rpc("add_order_staff_note", {
+        p_order: input.id,
+        p_actor: actor.id,
+        p_request: z.string().uuid().parse(input.request_id),
+        p_note: z.string().trim().min(1).max(1000).parse(input.note),
+      }),
+    );
+    return { message: "Internal note saved." };
   } else if (action === "refund") {
     const actor = await requireStaff(ctx, ["owner", "admin"]);
     requireDb(
@@ -766,7 +844,7 @@ export async function adminAction(ctx: Context, action: string, body: unknown) {
     const actor = await requireStaff(ctx, ["owner", "admin"]);
     if (action === "retry-webhook")
       throw new AppError("RETRY_RECONCILIATION", "Use payment reconciliation to retry this order.");
-    checkDb(
+    requireDb(
       await db
         .from("notification_outbox")
         .update({
@@ -776,7 +854,9 @@ export async function adminAction(ctx: Context, action: string, body: unknown) {
           next_attempt: new Date().toISOString(),
         })
         .eq("id", input.id)
-        .neq("status", "sent"),
+        .eq("status", "failed")
+        .select("id")
+        .maybeSingle(),
     );
     await audit(ctx, actor.id, "retry", "notification", input.id);
   } else throw new AppError("NOT_FOUND", "This action isn’t available.", 404);

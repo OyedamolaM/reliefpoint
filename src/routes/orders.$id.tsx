@@ -7,6 +7,7 @@ export const Route = createFileRoute("/orders/$id")({
     meta: [
       { title: "Your order | ReliefPoint Pharmacy" },
       { name: "robots", content: "noindex,nofollow" },
+      { name: "referrer", content: "no-referrer" },
     ],
   }),
   component: Page,

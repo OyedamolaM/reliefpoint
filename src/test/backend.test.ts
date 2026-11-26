@@ -67,6 +67,256 @@ async function begin(request: string, quantity = 1) {
   ).rows[0]!.o;
 }
 describe("database migrations and pharmacy transactions", () => {
+  it("does not create pickup automatically and enforces free collection and its tracking sequence", async () => {
+    expect(
+      (await db.query("select id from shipping_zones where fulfillment_method='pickup'")).rows,
+    ).toHaveLength(0);
+    await db.exec("begin");
+    try {
+      const pickup = (
+        await db.query<{ id: string }>(
+          "insert into shipping_zones(state,lga,area,fee_kobo,estimate,fulfillment_method) values('Pickup','Pharmacy','Oregun pharmacy',0,'Ready today','pickup') returning id",
+        )
+      ).rows[0]!.id;
+      await db.exec("savepoint pickup_fee");
+      await expect(
+        db.query("update shipping_zones set fee_kobo=100 where id=$1", [pickup]),
+      ).rejects.toThrow();
+      await db.exec("rollback to savepoint pickup_fee");
+      await db.query("update products set prescription=false where id=$1", [product]);
+      const order = (
+        await db.query<{ o: any }>("select begin_checkout($1::jsonb,$2,'hash',true) o", [
+          JSON.stringify({ ...input(crypto.randomUUID()), zone_id: pickup }),
+          customer,
+        ])
+      ).rows[0]!.o;
+      expect(order.delivery).toBe(0);
+      expect(order.zone_snapshot.fulfillment_method).toBe("pickup");
+      await db.query("select settle_payment($1,$2,'NGN','pickup-payment',0,true)", [
+        order.reference,
+        order.total,
+      ]);
+      await db.query("select update_order_tracking($1,'processing','','','','',$2,$3)", [
+        order.id,
+        owner,
+        crypto.randomUUID(),
+      ]);
+      await db.exec("savepoint pickup_dispatch");
+      await expect(
+        db.query("select update_order_tracking($1,'dispatched','','','','',$2,$3)", [
+          order.id,
+          owner,
+          crypto.randomUUID(),
+        ]),
+      ).rejects.toThrow("DELIVERY_SEQUENCE");
+      await db.exec("rollback to savepoint pickup_dispatch");
+      await db.query("select update_order_tracking($1,'delivered','Collected','','','',$2,$3)", [
+        order.id,
+        owner,
+        crypto.randomUUID(),
+      ]);
+      expect(
+        (await db.query("select fulfillment_status from orders where id=$1", [order.id])).rows[0],
+      ).toMatchObject({ fulfillment_status: "delivered" });
+    } finally {
+      await db.exec("rollback");
+    }
+  });
+  it("copies the signup phone into the private profile without changing email verification", async () => {
+    await db.exec("begin");
+    try {
+      const id = crypto.randomUUID();
+      await db.query(
+        "insert into auth.users(id,email,raw_user_meta_data) values($1,'phone@example.com',$2)",
+        [id, JSON.stringify({ name: "New Buyer", phone: "08012345678" })],
+      );
+      expect(
+        (await db.query("select name,phone from profiles where id=$1", [id])).rows[0],
+      ).toMatchObject({ name: "New Buyer", phone: "08012345678" });
+      expect(
+        (await db.query("select email_confirmed_at from auth.users where id=$1", [id])).rows[0],
+      ).toMatchObject({ email_confirmed_at: null });
+    } finally {
+      await db.exec("rollback");
+    }
+  });
+  it("assigns products during category creation and preserves assignments through renaming", async () => {
+    await db.exec("begin");
+    try {
+      const category = (
+        await db.query<{ id: string }>(
+          "select save_category_products(null,'Care essentials',$1::uuid[],$2) id",
+          [[product], owner],
+        )
+      ).rows[0]!.id;
+      expect(
+        (await db.query("select category from products where id=$1", [product])).rows[0],
+      ).toMatchObject({ category: "Care essentials" });
+      await db.query("select save_category_products($1,'Everyday care','{}'::uuid[],$2)", [
+        category,
+        owner,
+      ]);
+      expect(
+        (await db.query("select category from products where id=$1", [product])).rows[0],
+      ).toMatchObject({ category: "Everyday care" });
+      await db.exec("savepoint missing_product");
+      await expect(
+        db.query("select save_category_products(null,'Do not create',$1::uuid[],$2)", [
+          [crypto.randomUUID()],
+          owner,
+        ]),
+      ).rejects.toThrow("CATEGORY_PRODUCTS_MISSING");
+      await db.exec("rollback to savepoint missing_product");
+      expect(
+        (await db.query("select id from categories where name='Do not create'")).rows,
+      ).toHaveLength(0);
+      await db.exec("savepoint forbidden_category");
+      await expect(
+        db.query("select save_category_products($1,'Blocked',$2::uuid[],$3)", [
+          category,
+          [product],
+          customer,
+        ]),
+      ).rejects.toThrow("FORBIDDEN");
+      await db.exec("rollback to savepoint forbidden_category");
+    } finally {
+      await db.exec("rollback");
+    }
+  });
+  it("captures immutable verified receipts and queues one email per public tracking update", async () => {
+    await db.exec("begin");
+    try {
+      const o = await begin(crypto.randomUUID());
+      expect(
+        (await db.query("select * from receipts where order_id=$1", [o.id])).rows,
+      ).toHaveLength(0);
+      await db.query("select attach_prescription($1,'private/receipt.pdf','application/pdf')", [
+        o.id,
+      ]);
+      await db.query("select settle_payment($1,$2,'NGN','receipt-test',0,true)", [
+        o.reference,
+        o.total,
+      ]);
+      const snapshot = (
+        await db.query<{ document: any }>("select document from receipts where order_id=$1", [o.id])
+      ).rows[0]!.document;
+      expect(snapshot).toMatchObject({
+        total: o.total,
+        currency: "NGN",
+        method: "paystack",
+        customer: { name: "Customer" },
+        items: [{ name: "Test Medicine", quantity: 1, price_kobo: 240000 }],
+      });
+      expect(
+        (await db.query("select kind from notification_outbox where dedupe=$1", ["paid:" + o.id]))
+          .rows[0],
+      ).toMatchObject({ kind: "receipt" });
+      await db.query("select settle_payment($1,$2,'NGN','receipt-test',0,true)", [
+        o.reference,
+        o.total,
+      ]);
+      expect(
+        (await db.query("select * from receipts where order_id=$1", [o.id])).rows,
+      ).toHaveLength(1);
+      await db.exec("savepoint receipt_change");
+      await expect(
+        db.query("update receipts set document='{}' where order_id=$1", [o.id]),
+      ).rejects.toThrow("RECEIPT_IMMUTABLE");
+      await db.exec("rollback to savepoint receipt_change");
+      await db.exec("savepoint held");
+      await expect(
+        db.query("select update_order_tracking($1,'processing','','','','',$2,$3)", [
+          o.id,
+          owner,
+          crypto.randomUUID(),
+        ]),
+      ).rejects.toThrow("ORDER_ON_HOLD");
+      await db.exec("rollback to savepoint held");
+      await db.query("select review_prescription($1,'approved','Approved',$2)", [o.id, pharmacist]);
+      const request = crypto.randomUUID();
+      const update = () =>
+        db.query(
+          "select update_order_tracking($1,'processing','Packed safely','Courier','REF','Tomorrow',$2,$3)",
+          [o.id, owner, request],
+        );
+      await update();
+      await update();
+      expect(
+        (await db.query("select * from delivery_events where request_id=$1", [request])).rows,
+      ).toHaveLength(1);
+      expect(
+        (
+          await db.query(
+            "select * from notification_outbox where order_id=$1 and kind='delivery'",
+            [o.id],
+          )
+        ).rows,
+      ).toHaveLength(1);
+      await db.query(
+        "select update_order_tracking($1,'processing','Revised delivery time','','','Two days',$2,$3)",
+        [o.id, owner, crypto.randomUUID()],
+      );
+      expect(
+        (
+          await db.query(
+            "select * from notification_outbox where order_id=$1 and kind='delivery'",
+            [o.id],
+          )
+        ).rows,
+      ).toHaveLength(2);
+      const count = (
+        await db.query("select count(*) from notification_outbox where order_id=$1", [o.id])
+      ).rows;
+      const noteRequest = crypto.randomUUID();
+      await db.query("select add_order_staff_note($1,$2,$3,'Internal only')", [
+        o.id,
+        owner,
+        noteRequest,
+      ]);
+      await db.query("select add_order_staff_note($1,$2,$3,'Internal only')", [
+        o.id,
+        owner,
+        noteRequest,
+      ]);
+      expect(
+        (await db.query("select * from order_staff_notes where order_id=$1", [o.id])).rows,
+      ).toHaveLength(1);
+      expect(
+        (await db.query("select count(*) from notification_outbox where order_id=$1", [o.id])).rows,
+      ).toEqual(count);
+      await db.query(
+        "update orders set contact=jsonb_set(contact,'{name}',$2::jsonb),payment_status='refunded' where id=$1",
+        [o.id, JSON.stringify("Changed name")],
+      );
+      expect(
+        (
+          await db.query<{ document: any }>("select document from receipts where order_id=$1", [
+            o.id,
+          ])
+        ).rows[0]!.document,
+      ).toEqual(snapshot);
+      await db.exec("savepoint private_receipt; set local role authenticated");
+      await expect(db.query("select * from receipts")).rejects.toThrow(/permission denied/);
+      await db.exec("rollback to savepoint private_receipt");
+      await db.exec("savepoint private_note; set local role authenticated");
+      await expect(db.query("select * from order_staff_notes")).rejects.toThrow(
+        /permission denied/,
+      );
+      await db.exec("rollback to savepoint private_note");
+      await db.exec("savepoint wrong_staff");
+      await expect(
+        db.query("select update_order_tracking($1,'dispatched','','','','',$2,$3)", [
+          o.id,
+          customer,
+          crypto.randomUUID(),
+        ]),
+      ).rejects.toThrow("FORBIDDEN");
+      await db.exec("rollback to savepoint wrong_staff");
+    } finally {
+      await db.exec("rollback");
+    }
+  });
+
   it("creates staff purchases without gateway fees or account attachment and records manual payment once", async () => {
     await db.exec("begin");
     try {
@@ -114,6 +364,13 @@ describe("database migrations and pharmacy transactions", () => {
         fulfillment_status: "prescription_review",
         stock_committed: true,
       });
+      expect(
+        (
+          await db.query<{ document: any }>("select document from receipts where order_id=$1", [
+            o.id,
+          ])
+        ).rows[0]!.document,
+      ).toMatchObject({ method: "cash", total: 240000 });
       await pay();
       expect(
         (

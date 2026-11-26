@@ -5,7 +5,14 @@ import { AppError, checkDb, requireDb } from "./errors";
 import { identity, rate, type Context } from "./session";
 import { ownedOrder, reconcile } from "./payments";
 
-export async function orderDetails(ctx: Context, id: string, trackingToken?: string) {
+export async function accessibleOrder(ctx: Context, id: string, trackingToken?: string) {
+  z.string().uuid().parse(id);
+  if (trackingToken && !/^[a-f0-9]{64}$/.test(trackingToken))
+    throw new AppError(
+      "LINK_EXPIRED",
+      "This tracking link has expired. Please request a new one.",
+      401,
+    );
   let order;
   if (trackingToken) {
     const token = checkDb(
@@ -24,6 +31,10 @@ export async function orderDetails(ctx: Context, id: string, trackingToken?: str
       );
     order = requireDb(await ctx.db.from("orders").select("*").eq("id", id).single());
   } else order = await ownedOrder(ctx, id);
+  return order;
+}
+export async function orderDetails(ctx: Context, id: string, trackingToken?: string) {
+  const order = await accessibleOrder(ctx, id, trackingToken);
   const items = requireDb(
     await ctx.db
       .from("order_items")
@@ -33,7 +44,7 @@ export async function orderDetails(ctx: Context, id: string, trackingToken?: str
   const events = requireDb(
     await ctx.db
       .from("delivery_events")
-      .select("status,note,courier,tracking_reference,created_at")
+      .select("id,status,note,courier,tracking_reference,estimated_delivery,created_at")
       .eq("order_id", id)
       .order("created_at"),
   );
@@ -53,6 +64,9 @@ export async function orderDetails(ctx: Context, id: string, trackingToken?: str
   const { guest_hash: _g, fee_snapshot: _f, authorization_url: _a, ...safe } = order;
   return {
     order: safe,
+    receipt:
+      checkDb(await ctx.db.from("receipts").select("document").eq("order_id", id).maybeSingle())
+        ?.document ?? null,
     items,
     events,
     prescriptions,
@@ -83,20 +97,14 @@ export async function customerAction(ctx: Context, action: string, body: unknown
         .maybeSingle(),
     );
     if (order) {
-      const token = randomBytes(32).toString("hex");
-      checkDb(
-        await db.from("tracking_tokens").insert({
-          hash: ctx.hash(token),
-          order_id: order.id,
-          expires_at: new Date(Date.now() + 30 * 60000).toISOString(),
-        }),
-      );
       checkDb(
         await db.from("notification_outbox").insert({
-          dedupe: `tracking:${token}`,
+          dedupe: `tracking:${randomBytes(16).toString("hex")}`,
           email: order.contact.email,
           subject: "Your secure order link — ReliefPoint Pharmacy",
-          body: `Track your order using this private link, valid for 30 minutes: ${ctx.origin}/orders/${order.id}?token=${token}`,
+          body: "Use the private link below to track your order and view its receipt after payment is confirmed.",
+          kind: "order-link",
+          order_id: order.id,
         }),
       );
     }

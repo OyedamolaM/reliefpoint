@@ -1,3 +1,4 @@
+import { SocialLinks } from "./social-links";
 import { ProductPurchase } from "./product-purchase";
 import { useRef, useState } from "react";
 import {
@@ -1131,6 +1132,7 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
               <MessageCircle size={16} />
               Connect on WhatsApp
             </a>
+            <SocialLinks settings={shop.settings} />
           </div>
           <div>
             <h3>Shop ReliefPoint</h3>

@@ -128,7 +128,7 @@ async function readContent(kind: string, slug?: string) {
       zones: requireDb(
         await db
           .from("shipping_zones")
-          .select("id,state,lga,area,fee_kobo,free_over_kobo,estimate,active")
+          .select("id,state,lga,area,fee_kobo,free_over_kobo,estimate,active,fulfillment_method")
           .eq("active", true)
           .order("state")
           .limit(500),

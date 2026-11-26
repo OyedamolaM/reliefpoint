@@ -8,6 +8,7 @@ vi.mock("@/server/session", () => ({
     aal: "aal2",
   }),
   audit: async () => {},
+  rate: async () => {},
 }));
 import { adminAction } from "@/server/admin";
 describe("successful administrative mutations", () => {
@@ -23,8 +24,11 @@ describe("successful administrative mutations", () => {
         value,
         amount: 1,
         note: "Approved",
+        request_id: "00000000-0000-4000-8000-000000000003",
       });
-      expect(result.message).toBe("Changes saved.");
+      expect(result.message).toBe(
+        action === "delivery" ? "Tracking updated. Customer email queued." : "Changes saved.",
+      );
       expect(rpc).toHaveBeenCalledOnce();
     },
   );

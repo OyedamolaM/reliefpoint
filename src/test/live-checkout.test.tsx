@@ -36,6 +36,49 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe("server-backed checkout", () => {
+  it("offers pickup only at an active admin-configured location and does not require a street address", async () => {
+    const pickup = {
+      ...deliveryZone,
+      id: "00000000-0000-4000-8000-000000000003",
+      state: "Pickup",
+      lga: "Pharmacy",
+      area: "ReliefPoint Oregun",
+      fulfillment_method: "pickup",
+      fee_kobo: 0,
+    };
+    const request = vi.fn(async (path: string) =>
+      Response.json(
+        path.includes("zones")
+          ? { zones: [deliveryZone, pickup] }
+          : {
+              quote: {
+                subtotal: 100000,
+                delivery: 0,
+                processing: 1523,
+                total: 101523,
+                eta: "Ready today",
+                prescription: false,
+              },
+            },
+      ),
+    );
+    vi.stubGlobal("fetch", request);
+    render(<LiveCheckout cart={basket} onBack={() => {}} />);
+    fireEvent.click(await screen.findByRole("radio", { name: "Pickup" }));
+    expect(screen.queryByLabelText("Street address")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("State / FCT")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Pickup location")).toHaveValue(pickup.id);
+    for (const [label, value] of [
+      ["Full name", "Amina Test"],
+      ["Email", "amina@example.com"],
+      ["Nigerian phone number", "08012345678"],
+    ])
+      fireEvent.change(screen.getByLabelText(label!), { target: { value } });
+    fireEvent.submit(screen.getByRole("button", { name: "Continue to payment" }).closest("form")!);
+    await screen.findByRole("button", { name: /^Pay / });
+    const call = request.mock.calls.find(([path]) => path.includes("checkout/quote"));
+    expect(call).toBeDefined();
+  });
   it("keeps delivery details visible when checkout is blocked before payment review", async () => {
     const request = vi.fn(async (path: string) =>
       path.includes("zones")
@@ -73,6 +116,7 @@ describe("server-backed checkout", () => {
     expect(screen.getByLabelText("State / FCT").querySelectorAll("option")).toHaveLength(38);
     expect(nigerianStates).toHaveLength(37);
     await screen.findByText("Online delivery isn’t available yet.", { exact: false });
+    expect(screen.queryByRole("radio", { name: "Pickup" })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("State / FCT"), { target: { value: "Lagos" } });
     expect(screen.getByLabelText("Delivery area")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Continue to payment" })).toBeDisabled();

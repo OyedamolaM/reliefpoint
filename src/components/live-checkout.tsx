@@ -30,6 +30,7 @@ export function LiveCheckout({
   onBusyChange?: (busy: boolean) => void;
 }) {
   const account = useAccount();
+  const [fulfillment, setFulfillment] = useState<"delivery" | "pickup">("delivery");
   const [localStep, setLocalStep] = useState(1);
   const step = activeStep ?? localStep;
   const setStep = (next: 1 | 2) => {
@@ -75,12 +76,15 @@ export function LiveCheckout({
     retry: false,
   });
   const activeZones = zones.data?.zones.filter((z) => z.active !== false) ?? [];
-  const stateZones = activeZones
+  const pickupZones = activeZones.filter((z) => z.fulfillment_method === "pickup");
+  const deliveryZones = activeZones.filter((z) => z.fulfillment_method !== "pickup");
+  const pickup = fulfillment === "pickup" || pickupZones.some((z) => z.id === zone);
+  const stateZones = deliveryZones
     .filter((z) => deliveryState(z.state) === state)
     .sort((a, b) => `${a.lga} ${a.area}`.localeCompare(`${b.lga} ${b.area}`));
-  const selectedZone = stateZones.find((z) => z.id === zone);
+  const selectedZone = (pickup ? pickupZones : stateZones).find((z) => z.id === zone);
   const stateOptions = [
-    ...new Set([...nigerianStates, ...activeZones.map((z) => deliveryState(z.state))]),
+    ...new Set([...nigerianStates, ...deliveryZones.map((z) => deliveryState(z.state))]),
   ].sort();
   const needsRx = cart.some((i) => i.product.prescription);
   const basketKey = JSON.stringify(cart.map((i) => [i.product.id, i.quantity, i.product.price]));
@@ -94,7 +98,7 @@ export function LiveCheckout({
   }, [paymentStarted, onLockedChange]);
   const input = (): CheckoutInput => ({
     items: cart.map(({ product, quantity }) => ({ id: product.id, quantity })),
-    contact,
+    contact: { ...contact, address: pickup ? "Pharmacy pickup" : contact.address },
     zone_id: zone,
     channel,
     request_id: requestId.current,
@@ -205,7 +209,7 @@ export function LiveCheckout({
           }}
         >
           <fieldset disabled={busy || paymentStarted} className="min-w-0 space-y-4">
-            {addresses.data?.rows.length ? (
+            {!pickup && addresses.data?.rows.length ? (
               <label className="block text-sm font-semibold">
                 Saved address
                 <select
@@ -234,71 +238,118 @@ export function LiveCheckout({
                 </select>
               </label>
             ) : null}
-            {(["name", "email", "phone", "address"] as const).map((key) => (
-              <Field
-                key={key}
-                label={
-                  {
-                    name: "Full name",
-                    email: "Email",
-                    phone: "Nigerian phone number",
-                    address: "Street address",
-                  }[key]
-                }
-                type={key === "email" ? "email" : key === "phone" ? "tel" : "text"}
-                required
-                value={contact[key]}
-                onChange={(e) => setContact((c) => ({ ...c, [key]: e.target.value }))}
-                readOnly={key === "email" && !!account.user}
-              />
-            ))}
-            <label className="block text-sm font-semibold">
-              State / FCT
-              <select
-                aria-label="State / FCT"
-                className="commerce-input mt-2"
-                required
-                value={state}
-                onChange={(e) => {
-                  setState(e.target.value);
-                  setZone("");
-                  setError("");
-                  setQuote(null);
-                }}
-              >
-                <option value="">Select state</option>
-                {stateOptions.map((s) => (
-                  <option key={s}>{s}</option>
+            {(["name", "email", "phone", "address"] as const)
+              .filter((key) => !pickup || key !== "address")
+              .map((key) => (
+                <Field
+                  key={key}
+                  label={
+                    {
+                      name: "Full name",
+                      email: "Email",
+                      phone: "Nigerian phone number",
+                      address: "Street address",
+                    }[key]
+                  }
+                  type={key === "email" ? "email" : key === "phone" ? "tel" : "text"}
+                  required
+                  value={contact[key]}
+                  onChange={(e) => setContact((c) => ({ ...c, [key]: e.target.value }))}
+                  readOnly={key === "email" && !!account.user}
+                />
+              ))}
+            {pickupZones.length > 0 && (
+              <div className="flex gap-4">
+                {(["delivery", "pickup"] as const).map((value) => (
+                  <label key={value} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="fulfillment"
+                      checked={pickup ? value === "pickup" : value === "delivery"}
+                      onChange={() => {
+                        setFulfillment(value);
+                        setZone(value === "pickup" ? pickupZones[0]?.id || "" : "");
+                      }}
+                    />
+                    {value === "pickup" ? "Pickup" : "Delivery"}
+                  </label>
                 ))}
-              </select>
-            </label>
-            <label className="block text-sm font-semibold">
-              Delivery area
-              <select
-                aria-label="Delivery area"
-                className="commerce-input mt-2"
-                required
-                disabled={!state || zones.isPending || zones.isError || stateZones.length === 0}
-                value={zone}
-                onChange={(e) => setZone(e.target.value)}
-              >
-                <option value="">
-                  {zones.isPending
-                    ? "Loading delivery areas…"
-                    : !state
-                      ? "Select a state first"
-                      : stateZones.length === 0
-                        ? "No delivery areas available"
-                        : "Select LGA / area"}
-                </option>
-                {stateZones.map((z) => (
-                  <option value={z.id} key={z.id}>
-                    {z.lga}
-                    {z.area ? ` — ${z.area}` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
+              </div>
+            )}
+            {!pickup && (
+              <>
+                {" "}
+                <label className="block text-sm font-semibold">
+                  State / FCT
+                  <select
+                    aria-label="State / FCT"
+                    className="commerce-input mt-2"
+                    required
+                    value={state}
+                    onChange={(e) => {
+                      setState(e.target.value);
+                      setZone("");
+                      setError("");
+                      setQuote(null);
+                    }}
+                  >
+                    <option value="">Select state</option>
+                    {stateOptions.map((s) => (
+                      <option key={s}>{s}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-sm font-semibold">
+                  Delivery area
+                  <select
+                    aria-label="Delivery area"
+                    className="commerce-input mt-2"
+                    required
+                    disabled={!state || zones.isPending || zones.isError || stateZones.length === 0}
+                    value={zone}
+                    onChange={(e) => setZone(e.target.value)}
+                  >
+                    <option value="">
+                      {zones.isPending
+                        ? "Loading delivery areas…"
+                        : !state
+                          ? "Select a state first"
+                          : stateZones.length === 0
+                            ? "No delivery areas available"
+                            : "Select LGA / area"}
+                    </option>
+                    {stateZones.map((z) => (
+                      <option value={z.id} key={z.id}>
+                        {z.lga}
+                        {z.area ? ` — ${z.area}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            )}
+            {pickup && (
+              <label className="block text-sm font-semibold">
+                Pickup location
+                <select
+                  aria-label="Pickup location"
+                  className="commerce-input mt-2"
+                  value={zone}
+                  required
+                  onChange={(event) => setZone(event.target.value)}
+                >
+                  <option value="">Select pickup location</option>
+                  {pickupZones.map((z) => (
+                    <option key={z.id} value={z.id}>
+                      {z.area}
+                    </option>
+                  ))}
+                </select>
+                {selectedZone && (
+                  <span className="mt-2 block text-sm font-normal">{selectedZone.estimate}</span>
+                )}
+              </label>
+            )}
             {zones.isPending && (
               <p role="status" className="text-sm">
                 Loading delivery areas…
@@ -320,6 +371,7 @@ export function LiveCheckout({
               </div>
             )}
             {zones.isSuccess &&
+              !pickup &&
               (activeZones.length === 0 || (!!state && stateZones.length === 0)) && (
                 <p className="rounded-xl bg-secondary p-3 text-sm leading-6">
                   {activeZones.length === 0
@@ -396,7 +448,7 @@ export function LiveCheckout({
               {contact.name} · {contact.phone}
             </p>
             <p>{contact.email}</p>
-            <p>{contact.address}</p>
+            <p>{pickup ? selectedZone?.area : contact.address}</p>
             <p className="mt-3">{quote?.eta}</p>
           </div>
           <fieldset className="space-y-3">
@@ -417,7 +469,7 @@ export function LiveCheckout({
             <dl className="space-y-3 rounded-xl bg-secondary p-4">
               {[
                 ["Subtotal", quote.subtotal],
-                ["Delivery", quote.delivery],
+                [pickup ? "Pickup" : "Delivery", quote.delivery],
                 ["Processing fee", quote.processing],
                 ["Total", quote.total],
               ].map(([label, value]) => (

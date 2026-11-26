@@ -1,3 +1,4 @@
+import { prepareNotification } from "./notifications";
 import { config } from "./config";
 import { checkDb, timedFetch, requireDb, AppError } from "./errors";
 import { paystack, reconcile } from "./payments";
@@ -167,23 +168,35 @@ export async function runWorker(ctx: Context) {
         continue;
       }
       try {
+        const mail = await prepareNotification(ctx, message);
+        if (Date.now() > deadline - 10000) {
+          checkDb(
+            await db
+              .from("notification_outbox")
+              .update({
+                status: "pending",
+                locked_at: null,
+                attempts: message.attempts - 1,
+              })
+              .eq("id", message.id),
+          );
+          continue;
+        }
         const response = await timedFetch("https://api.brevo.com/v3/smtp/email", {
           method: "POST",
           headers: { "api-key": config().BREVO_API_KEY!, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sender: { name: "ReliefPoint Pharmacy", email: "support@reliefpointpharmacy.com" },
-            replyTo: { email: "support@reliefpointpharmacy.com" },
-            to: [{ email: message.email }],
-            subject: message.subject,
-            textContent: `${message.body}\n\nReliefPoint Pharmacy\n${ctx.origin}\nsupport@reliefpointpharmacy.com`,
-            headers: { idempotencyKey: message.id },
-          }),
+          body: JSON.stringify(mail),
         });
         if (!response.ok) throw new Error("Mail unavailable");
+        const delivery = (await response.json()) as { messageId?: string };
         checkDb(
           await db
             .from("notification_outbox")
-            .update({ status: "sent", locked_at: null })
+            .update({
+              status: "sent",
+              locked_at: null,
+              provider_message_id: delivery.messageId ?? null,
+            })
             .eq("id", message.id),
         );
       } catch {

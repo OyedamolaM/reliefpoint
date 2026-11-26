@@ -6,6 +6,7 @@ const credentials = z.object({
   email: z.string().email().max(180),
   password: z.string().min(10).max(128),
   name: z.string().trim().min(2).max(100).optional(),
+  phone: z.string().trim().optional(),
   accepted_terms: z.boolean().optional(),
 });
 export async function authAction(ctx: Context, action: string, body: unknown) {
@@ -20,12 +21,17 @@ export async function authAction(ctx: Context, action: string, body: unknown) {
           "TERMS_REQUIRED",
           "Please agree to the Terms and Conditions before signing up.",
         );
+      const phone = z
+        .string()
+        .regex(/^(?:0|\+?234)[789][0-9]{9}$/, "Enter a valid Nigerian phone number.")
+        .parse(input.phone);
       const { error } = await ctx.auth.auth.signUp({
         email: input.email,
         password: input.password,
         options: {
           data: {
             name: input.name ?? "",
+            phone,
             terms_version: "2026-11-26",
             terms_accepted_at: new Date().toISOString(),
           },

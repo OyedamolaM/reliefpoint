@@ -18,7 +18,6 @@ import {
   Plus,
   ArrowUpRight,
   Pencil,
-  LockKeyhole,
   ArrowRight,
   Eye,
   EyeOff,
@@ -97,7 +96,9 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: "signin" | 
             const result = await send<{ message?: string }>(`auth/${mode}`, {
               email: data.get("email"),
               password: data.get("password"),
-              ...(mode === "signup" ? { name: data.get("name"), accepted_terms: true } : {}),
+              ...(mode === "signup"
+                ? { name: data.get("name"), phone: data.get("phone"), accepted_terms: true }
+                : {}),
             });
             if (result.message) {
               setMessage(result.message);
@@ -115,6 +116,16 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: "signin" | 
         }}
       >
         {mode === "signup" && <Field name="name" label="Full name" required minLength={2} />}
+        {mode === "signup" && (
+          <Field
+            name="phone"
+            label="Nigerian phone number"
+            type="tel"
+            autoComplete="tel"
+            required
+            pattern="(?:0|\+?234)[789][0-9]{9}"
+          />
+        )}
         <Field name="email" label="Email address" type="email" required autoComplete="email" />
         {!["reset", "resend"].includes(mode) && (
           <Field
@@ -209,16 +220,6 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: "signin" | 
             </button>
           ))}
       </div>
-      <p className="mt-5 flex items-center justify-center gap-2 border-t border-slate-100 pt-4 text-xs text-slate-500">
-        <LockKeyhole size={13} />
-        Your account details stay private.
-      </p>
-      <Link
-        to="/"
-        className="mt-4 block rounded-lg py-2 text-center text-xs font-semibold text-slate-500 hover:text-brand"
-      >
-        Continue shopping as a guest
-      </Link>
     </section>
   );
 }
@@ -683,6 +684,7 @@ export function Pagination({
   return (
     <div className="mt-6 flex items-center gap-5">
       <button
+        type="button"
         disabled={page === 0}
         className="disabled:opacity-40"
         onClick={() => onChange(page - 1)}
@@ -690,7 +692,12 @@ export function Pagination({
         Previous
       </button>
       <span>Page {page + 1}</span>
-      <button disabled={!more} className="disabled:opacity-40" onClick={() => onChange(page + 1)}>
+      <button
+        type="button"
+        disabled={!more}
+        className="disabled:opacity-40"
+        onClick={() => onChange(page + 1)}
+      >
         Next
       </button>
     </div>

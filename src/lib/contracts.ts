@@ -129,6 +129,9 @@ export type Quote = {
   eta: string;
 };
 export type PublicSettings = {
+  instagram_url?: string;
+  facebook_url?: string;
+  tiktok_url?: string;
   address?: string;
   opening_hours?: string;
   pcn_logo?: string;
@@ -138,6 +141,7 @@ export type PublicSettings = {
   terms_text?: string;
 };
 export type ShippingZone = {
+  fulfillment_method?: "delivery" | "pickup";
   id: string;
   state: string;
   lga: string;

@@ -1,3 +1,4 @@
+import { readReceipt, receiptPdf } from "./receipts";
 import { z } from "zod";
 import { timingSafeEqual } from "node:crypto";
 import { AppError, checkDb, requireDb } from "./errors";
@@ -23,6 +24,7 @@ import {
   adminRecord,
   adminDashboard,
   inviteCustomer,
+  addCustomer,
   inviteStaff,
   importProducts,
   createAdminOrder,
@@ -129,7 +131,32 @@ export async function handleApi(request: Request) {
         result = await customerAction(ctx, path.slice(9), await body());
       else if (path.startsWith("customer/") && method === "GET")
         result = await customerData(ctx, path.slice(9), url.searchParams);
-      else if (path.startsWith("orders/") && method === "GET") {
+      else if (
+        (path.startsWith("receipts/") || path.startsWith("admin/receipts/")) &&
+        method === "GET"
+      ) {
+        await rate(ctx, "receipt-read", 15, 60);
+        const admin = path.startsWith("admin/");
+        const id = z
+          .string()
+          .uuid()
+          .parse(path.slice(admin ? 15 : 9));
+        const receipt = await readReceipt(
+          ctx,
+          id,
+          url.searchParams.get("token") ?? undefined,
+          admin,
+        );
+        const bytes = await receiptPdf(receipt);
+        ctx.headers.set("X-Robots-Tag", "noindex, nofollow");
+        ctx.headers.set("Content-Type", "application/pdf");
+        ctx.headers.set(
+          "Content-Disposition",
+          'attachment; filename="ReliefPoint-receipt-' + id + '.pdf"',
+        );
+        ctx.headers.set("Referrer-Policy", "no-referrer");
+        return new Response(Buffer.from(bytes), { headers: ctx.headers });
+      } else if (path.startsWith("orders/") && method === "GET") {
         await rate(ctx, "order-read", 30, 60);
         result = await orderDetails(ctx, path.slice(7), url.searchParams.get("token") ?? undefined);
       } else if (path === "uploads/ticket" && method === "POST")
@@ -147,6 +174,8 @@ export async function handleApi(request: Request) {
         result = await readCheckoutReadiness(ctx.db);
       } else if (path === "admin/summary" && method === "GET") {
         result = await adminDashboard(ctx, url.searchParams);
+      } else if (path === "admin/customer-create" && method === "POST") {
+        result = await addCustomer(ctx, await body());
       } else if (path === "admin/customer-invite" && method === "POST") {
         result = await inviteCustomer(ctx, await body());
       } else if (path === "admin/staff-invite" && method === "POST") {
@@ -179,6 +208,25 @@ export async function handleApi(request: Request) {
         const order = requireDb(await ctx.db.from("orders").select("*").eq("id", id).single());
         result = {
           order: { ...order, guest_hash: undefined },
+          receipt:
+            checkDb(
+              await ctx.db.from("receipts").select("document").eq("order_id", id).maybeSingle(),
+            )?.document ?? null,
+          staff_notes: requireDb(
+            await ctx.db
+              .from("order_staff_notes")
+              .select("id,note,created_at,actor")
+              .eq("order_id", id)
+              .order("created_at", { ascending: false }),
+          ),
+          notifications: requireDb(
+            await ctx.db
+              .from("notification_outbox")
+              .select("id,subject,status,attempts,created_at")
+              .eq("order_id", id)
+              .order("created_at", { ascending: false })
+              .limit(30),
+          ),
           manual_payment: order.created_by
             ? checkDb(
                 await ctx.db
@@ -198,7 +246,9 @@ export async function handleApi(request: Request) {
               )
             : [],
           refunds: requireDb(await ctx.db.from("refunds").select("*").eq("order_id", id)),
-          events: requireDb(await ctx.db.from("delivery_events").select("*").eq("order_id", id)),
+          events: requireDb(
+            await ctx.db.from("delivery_events").select("*").eq("order_id", id).order("created_at"),
+          ),
         };
       } else if (path === "admin/reconcile" && method === "POST") {
         await requireStaff(ctx, ["owner", "admin"]);

@@ -134,7 +134,10 @@ vi.mock("@/lib/api", () => ({
     if (path.startsWith("admin/categories?page=")) {
       const page = Number(new URLSearchParams(path.split("?")[1]).get("page"));
       return {
-        rows: state.categoryNames.slice(page, page + 1).map((name) => ({ name })),
+        rows: state.categoryNames.slice(page, page + 1).map((name) => ({
+          id: `00000000-0000-4000-8000-${String(page + 1).padStart(12, "0")}`,
+          name,
+        })),
         more: page + 1 < state.categoryNames.length,
       };
     }
@@ -187,6 +190,46 @@ beforeEach(() => {
   state.factors = [{ id: "factor-1", name: "ReliefPoint" }];
 });
 describe("pharmacy workspaces", () => {
+  it("keeps product import compact and excludes product export", async () => {
+    render(<AdminPage />);
+    fireEvent.click(
+      within(screen.getByRole("navigation", { name: "Administration" })).getByRole("button", {
+        name: "Products",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Import products" }));
+    const dialog = screen.getByRole("dialog", { name: "Import products" });
+    expect(dialog).toHaveClass("max-w-lg");
+    expect(within(dialog).queryByRole("button", { name: /Export/ })).not.toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Import product file")).toBeInTheDocument();
+  });
+  it("creates and selects a category inside the product form without losing entered details", async () => {
+    render(<AdminPage />);
+    fireEvent.click(
+      within(screen.getByRole("navigation", { name: "Administration" })).getByRole("button", {
+        name: "Products",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add products" }));
+    const dialog = within(screen.getByRole("dialog"));
+    await waitFor(() => expect(dialog.getByRole("combobox", { name: "Category" })).toBeEnabled());
+    fireEvent.change(dialog.getByLabelText("Product name"), {
+      target: { value: "New care product" },
+    });
+    fireEvent.click(dialog.getByRole("button", { name: "+ New category" }));
+    fireEvent.change(dialog.getByLabelText("New category name"), {
+      target: { value: "Everyday care" },
+    });
+    fireEvent.click(dialog.getByRole("button", { name: "Create category" }));
+    await waitFor(() =>
+      expect(dialog.getByRole("combobox", { name: "Category" })).toHaveValue("Everyday care"),
+    );
+    expect(dialog.getByLabelText("Product name")).toHaveValue("New care product");
+    expect(state.actions).toContainEqual({
+      path: "admin/categories",
+      input: { name: "Everyday care" },
+    });
+  });
   it("uses an explicit tips label instead of Add record", async () => {
     render(<AdminPage />);
     fireEvent.click(
@@ -207,6 +250,9 @@ describe("pharmacy workspaces", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Add order" }));
     const modal = screen.getByRole("dialog", { name: "Add order" });
+    fireEvent.click(within(modal).getByRole("button", { name: "Select customer" }));
+    const customers = screen.getByRole("dialog", { name: "Select customer" });
+    fireEvent.click(await within(customers).findByRole("button", { name: /Buyer One/ }));
     for (const [label, value] of [
       ["Customer name", "Buyer One"],
       ["Email address", "buyer@example.com"],
@@ -219,7 +265,10 @@ describe("pharmacy workspaces", () => {
     fireEvent.change(within(modal).getByLabelText("Delivery area"), {
       target: { value: "00000000-0000-4000-8000-000000000010" },
     });
-    fireEvent.click(await within(modal).findByRole("button", { name: "Add Vitamin C" }));
+    fireEvent.click(within(modal).getByRole("button", { name: "Add products" }));
+    const products = screen.getByRole("dialog", { name: "Select products" });
+    fireEvent.click(await within(products).findByRole("checkbox", { name: "Select Vitamin C" }));
+    fireEvent.click(within(products).getByRole("button", { name: /Add selected products/ }));
     fireEvent.click(within(modal).getByRole("button", { name: "Review order" }));
     fireEvent.click(await within(modal).findByRole("button", { name: "Create order" }));
     await within(modal).findByText("RP-example");
@@ -286,7 +335,7 @@ describe("pharmacy workspaces", () => {
     expect(screen.getByText("Phone: 08012345678")).toBeInTheDocument();
     expect(screen.queryByText("Phone:")).not.toBeInTheDocument();
   });
-  it("opens a product form directly from a category with that category selected", async () => {
+  it("manages category membership within the category tab instead of linking to product forms", async () => {
     render(<AdminPage />);
     fireEvent.click(
       within(screen.getByRole("navigation", { name: "Administration" })).getByRole("button", {
@@ -294,10 +343,14 @@ describe("pharmacy workspaces", () => {
       }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Categories" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Add product" }));
-    const category = screen.getByRole("combobox", { name: "Category" });
-    expect(category).toHaveValue("Vitamins");
-    expect(screen.getByRole("dialog", { name: "Add products" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add product" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "View products" })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Manage products" }));
+    const modal = screen.getByRole("dialog", { name: "Manage category" });
+    expect(modal).toHaveClass("max-w-xl");
+    expect(within(modal).getByLabelText("Category name")).toHaveValue("Vitamins");
+    expect(within(modal).getByText("Products in this category")).toBeInTheDocument();
+    expect(within(modal).getByLabelText("Find products")).toBeInTheDocument();
   });
   it("keeps the chosen date filter across order tabs and submits customer or item search", async () => {
     render(<AdminPage />);
@@ -351,6 +404,10 @@ describe("pharmacy workspaces", () => {
     const table = await screen.findByRole("table", { name: "Customers and contact details" });
     expect(within(table).getByRole("columnheader", { name: "Phone number" })).toBeInTheDocument();
     expect(within(table).getByText("buyer@example.com")).toBeInTheDocument();
+    expect(within(table).getByRole("link", { name: "WhatsApp Buyer One" })).toHaveAttribute(
+      "href",
+      "https://wa.me/2348012345678",
+    );
     expect(within(table).getByText("12 Oregun Road, Ikeja, Lagos")).toBeInTheDocument();
     expect(within(table).getByText("Awaiting verification")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Add customer" }));
@@ -363,7 +420,7 @@ describe("pharmacy workspaces", () => {
       target: { value: "08012345678" },
     });
     expect(within(modal).queryByLabelText(/password/i)).not.toBeInTheDocument();
-    fireEvent.click(within(modal).getByRole("button", { name: "Add customer & send invitation" }));
+    fireEvent.click(within(modal).getByRole("button", { name: "Send invitation" }));
     await waitFor(() =>
       expect(state.actions).toContainEqual({
         path: "admin/customer-invite",
@@ -430,6 +487,29 @@ describe("pharmacy workspaces", () => {
       }),
     ).not.toBeChecked();
   });
+  it("shows naira and percentage fees while preserving the server's integer units", async () => {
+    state.showSettings = true;
+    render(<AdminPage />);
+    fireEvent.click(
+      within(screen.getByRole("navigation", { name: "Administration" })).getByRole("button", {
+        name: "Settings",
+      }),
+    );
+    const rate = await screen.findByLabelText("Processing rate (%)");
+    expect(rate).toHaveValue(1.5);
+    expect(screen.getByLabelText("Fixed fee (NGN)")).toHaveValue(100);
+    expect(screen.getByLabelText("Fee cap (NGN)")).toHaveValue(2000);
+    fireEvent.change(screen.getByLabelText("Fixed fee (NGN)"), { target: { value: "125.25" } });
+    fireEvent.submit(screen.getByRole("button", { name: "Save settings" }).closest("form")!);
+    await waitFor(() =>
+      expect(state.actions.find((a) => a.path === "admin/settings")?.input).toMatchObject({
+        fee_rate: 150,
+        fee_fixed: 12525,
+        fee_threshold: 250000,
+        fee_cap: 200000,
+      }),
+    );
+  });
   it("provides state choices when adding the first delivery zone", async () => {
     render(<AdminPage />);
     fireEvent.click(
@@ -443,7 +523,7 @@ describe("pharmacy workspaces", () => {
     const state = within(modal).getByLabelText("State / FCT");
     expect(state.tagName).toBe("SELECT");
     expect(state.querySelectorAll("option")).toHaveLength(38);
-    expect(within(modal).getByLabelText("Delivery fee (₦)")).toBeRequired();
+    expect(within(modal).getByLabelText("Fee (NGN)")).toBeRequired();
     expect(within(modal).getByLabelText("LGA / city")).toBeRequired();
   });
   it("offers setup only to accounts without a registered authenticator", async () => {

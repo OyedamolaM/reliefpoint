@@ -1,8 +1,11 @@
+import { customerWhatsApp, socialProfiles } from "@/lib/contact-links";
+import { CustomerForm as CustomerInvite } from "./customer-form";
+import { CategoryManager } from "./category-manager";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { hasMfaAccess } from "@/lib/session-policy";
 import { uploadFile } from "@/lib/upload";
 import { useState, useEffect, useId, useRef, type FormEvent } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
 import { api, send, notifyError } from "@/lib/api";
@@ -222,7 +225,6 @@ export function AdminPage() {
   const [editing, setEditing] = useState<any>(null);
   const [orderId, setOrderId] = useState("");
   const [listFilter, setListFilter] = useState("period=all");
-  const [categoryFilter, setCategoryFilter] = useState("");
   const [salesFilter, setSalesFilter] = useState(
     () => `period=month&month=${nigeriaDate().slice(0, 7)}`,
   );
@@ -265,10 +267,10 @@ export function AdminPage() {
   const enabled = !!user && hasMfaAccess(user) && accessible.some((s) => s.key === active);
   const activeDateFilter = dateFilteredSections.includes(active) ? listFilter : "period=all";
   const data = useQuery({
-    queryKey: ["private", "admin", active, page, query, user?.id, activeDateFilter, categoryFilter],
+    queryKey: ["private", "admin", active, page, query, user?.id, activeDateFilter],
     queryFn: () =>
       api<{ rows: any[]; more: boolean }>(
-        `admin/${active === "pending_orders" ? "orders" : active}?page=${page}&q=${encodeURIComponent(query)}${active === "pending_orders" ? "&view=pending" : ""}${activeDateFilter === "period=all" ? "" : `&${activeDateFilter}`}${active === "products" && categoryFilter ? `&category=${encodeURIComponent(categoryFilter)}` : ""}`,
+        `admin/${active === "pending_orders" ? "orders" : active}?page=${page}&q=${encodeURIComponent(query)}${active === "pending_orders" ? "&view=pending" : ""}${activeDateFilter === "period=all" ? "" : `&${activeDateFilter}`}`,
       ),
     enabled,
     retry: false,
@@ -532,20 +534,6 @@ export function AdminPage() {
                     </p>
                   </SalesDateFilter>
                 )}
-                {active === "products" && categoryFilter && (
-                  <p className="mb-3 text-sm">
-                    Category: <strong>{categoryFilter}</strong>{" "}
-                    <button
-                      className="ml-2 underline"
-                      onClick={() => {
-                        setPage(0);
-                        setCategoryFilter("");
-                      }}
-                    >
-                      Clear category
-                    </button>
-                  </p>
-                )}
                 <form
                   className="mb-5 flex flex-wrap gap-2"
                   onSubmit={(e) => {
@@ -628,36 +616,14 @@ export function AdminPage() {
                           </div>
                           <div className="flex gap-3 text-sm">
                             {active === "categories" && (
-                              <>
-                                <button
-                                  className="font-semibold text-brand"
-                                  onClick={() => {
-                                    setSection("products");
-                                    setPage(0);
-                                    setQuery("");
-                                    setSearch("");
-                                    setEditing({ category: row.name });
-                                  }}
-                                >
-                                  Add product
-                                </button>
-                                <button
-                                  className="underline"
-                                  onClick={() => {
-                                    setSection("products");
-                                    setPage(0);
-                                    setQuery("");
-                                    setSearch("");
-                                    setCategoryFilter(row.name);
-                                  }}
-                                >
-                                  View products
-                                </button>
-                              </>
+                              <button
+                                className="font-semibold text-brand"
+                                onClick={() => setEditing({ ...row, pickProducts: true })}
+                              >
+                                Manage products
+                              </button>
                             )}
-                            {["products", "categories", "shipping_zones", "blog_posts"].includes(
-                              active,
-                            ) &&
+                            {["products", "shipping_zones", "blog_posts"].includes(active) &&
                               (active !== "blog_posts" || canWriteBlog) && (
                                 <button
                                   className="underline"
@@ -745,7 +711,8 @@ export function AdminPage() {
                             .filter((key) => row[key] != null)
                             .map((key) => (
                               <span key={key}>
-                                {key.replaceAll("_", " ")}: {formatNaira(row[key] / 100)}
+                                {key === "fee_kobo" ? "Fee" : key.replaceAll("_", " ")}:{" "}
+                                {formatNaira(row[key] / 100)}
                               </span>
                             ))}
                           {row.total !== undefined && <span>{formatNaira(row.total / 100)}</span>}
@@ -919,7 +886,14 @@ export function AdminPage() {
                 <WorkspaceModal
                   open={!!editing}
                   onClose={() => setEditing(null)}
-                  title={`${editing?.id ? "Edit" : "Add"} ${active === "products" && editing?.id ? "product" : recordNames[active] || sections.find((s) => s.key === active)?.label.toLowerCase()}`}
+                  size={
+                    active === "shipping_zones"
+                      ? "compact"
+                      : ["categories", "profiles", "orders", "pending_orders"].includes(active)
+                        ? "medium"
+                        : "wide"
+                  }
+                  title={`${active === "categories" && editing?.id ? "Manage" : editing?.id ? "Edit" : "Add"} ${active === "products" && editing?.id ? "product" : recordNames[active] || sections.find((s) => s.key === active)?.label.toLowerCase()}`}
                 >
                   {editing && ["orders", "pending_orders"].includes(active) ? (
                     <AdminOrderForm
@@ -933,6 +907,15 @@ export function AdminPage() {
                         );
                         setPage(0);
                         setOrderId(id);
+                      }}
+                    />
+                  ) : editing && active === "categories" ? (
+                    <CategoryManager
+                      key={editing.id || "new"}
+                      row={editing}
+                      onSaved={(row) => {
+                        setEditing(row);
+                        refresh();
                       }}
                     />
                   ) : editing && active === "staff_roles" ? (
@@ -967,7 +950,8 @@ export function AdminPage() {
                 <WorkspaceModal
                   open={bulk}
                   onClose={() => setBulk(false)}
-                  title="Import / export products"
+                  title="Import products"
+                  size="compact"
                 >
                   <BulkProducts onSaved={refresh} />
                 </WorkspaceModal>
@@ -1005,44 +989,10 @@ function BulkProducts({ onSaved }: { onSaved: () => void }) {
   return (
     <div className="mb-6 space-y-3 rounded-xl bg-secondary p-4">
       <div className="flex flex-wrap items-center gap-5">
-        <button
-          className="underline"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            try {
-              const records: any[] = [];
-              let page = 0;
-              while (page < 100) {
-                const data = await api<{ rows: any[]; more: boolean }>(
-                  `admin/products?page=${page}&export=1`,
-                );
-                records.push(...data.rows);
-                if (!data.more) break;
-                page++;
-              }
-              const url = URL.createObjectURL(
-                new Blob([JSON.stringify(records, null, 2)], { type: "application/json" }),
-              );
-              const link = document.createElement("a");
-              link.href = url;
-              link.download = "reliefpoint-products.json";
-              link.click();
-              setTimeout(() => URL.revokeObjectURL(url), 1000);
-              toast.success("Product export downloaded.");
-            } catch (error) {
-              notifyError(error);
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          Export products
-        </button>
         <label className="text-sm font-semibold">
           Import product file
           <input
-            className="mt-2 block text-sm"
+            className="mt-2 block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-brand file:px-4 file:py-2 file:font-semibold file:text-white"
             type="file"
             accept="application/json,.json"
             disabled={busy}
@@ -1059,9 +1009,7 @@ function BulkProducts({ onSaved }: { onSaved: () => void }) {
                 try {
                   records = JSON.parse(await file.text());
                 } catch {
-                  toast.error(
-                    "This file isn’t valid JSON. Please check the product export format.",
-                  );
+                  toast.error("This file isn’t valid JSON. Please check the product file format.");
                   return;
                 }
                 if (!Array.isArray(records)) {
@@ -1104,8 +1052,8 @@ function BulkProducts({ onSaved }: { onSaved: () => void }) {
         </div>
       )}
       <p className="text-xs">
-        JSON files up to 10 MB. Products import in batches of 20. Use the export format with photos
-        already uploaded through this store.
+        JSON files up to 10 MB. Products import in batches of 20. Use photos already uploaded
+        through this store.
       </p>
       {report
         .filter((r) => r.error)
@@ -1127,6 +1075,14 @@ function AdminEditor({
   row: any;
   onSaved: () => void;
 }) {
+  const queryClient = useQueryClient();
+  const [selectedCategory, setSelectedCategory] = useState(row.category ?? "");
+  const [newCategory, setNewCategory] = useState("");
+  const [showNewCategory, setShowNewCategory] = useState(false);
+  const [categorySaving, setCategorySaving] = useState(false);
+  const [fulfillmentMethod, setFulfillmentMethod] = useState<"delivery" | "pickup">(
+    row.fulfillment_method ?? "delivery",
+  );
   const [photo, setPhoto] = useState(row.image ?? row.cover ?? "");
   const [blocks, setBlocks] = useState<any[]>(row.blocks ?? [{ type: "paragraph", text: "" }]);
   const [priceError, setPriceError] = useState("");
@@ -1154,6 +1110,29 @@ function AdminEditor({
       return [...names].sort((a, b) => a.localeCompare(b));
     },
   });
+  const createCategory = async () => {
+    const name = newCategory.trim();
+    if (name.length < 2 || name.length > 80) {
+      toast.error("Enter a category name between 2 and 80 characters.");
+      return;
+    }
+    setCategorySaving(true);
+    try {
+      await send("admin/categories", { name });
+      queryClient.setQueryData<string[]>(["private", "product-category-options"], (current = []) =>
+        [...new Set([...current, name])].sort(),
+      );
+      setSelectedCategory(name);
+      setNewCategory("");
+      setShowNewCategory(false);
+      void queryClient.invalidateQueries({ queryKey: ["private", "admin", "categories"] });
+      toast.success("Category created and selected.");
+    } catch (error) {
+      notifyError(error);
+    } finally {
+      setCategorySaving(false);
+    }
+  };
   const save = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setPriceError("");
@@ -1191,8 +1170,12 @@ function AdminEditor({
     if (resource === "shipping_zones")
       input = {
         ...input,
-        fee_kobo: Math.round(Number(d["fee"]) * 100),
-        free_over_kobo: d["free"] ? Math.round(Number(d["free"]) * 100) : null,
+        fulfillment_method: fulfillmentMethod,
+        state: fulfillmentMethod === "pickup" ? "Pickup" : d["state"],
+        lga: fulfillmentMethod === "pickup" ? "Pharmacy" : d["lga"],
+        fee_kobo: fulfillmentMethod === "pickup" ? 0 : Math.round(Number(d["fee"]) * 100),
+        free_over_kobo:
+          fulfillmentMethod !== "pickup" && d["free"] ? Math.round(Number(d["free"]) * 100) : null,
         active: d["active"] === "on",
       };
     try {
@@ -1256,8 +1239,9 @@ function AdminEditor({
                   aria-label="Category"
                   name="category"
                   className="commerce-input mt-2"
-                  defaultValue={row.category ?? ""}
-                  disabled={categories.isPending || !!categories.error}
+                  value={selectedCategory}
+                  onChange={(event) => setSelectedCategory(event.target.value)}
+                  disabled={categorySaving || categories.isPending || !!categories.error}
                   required
                 >
                   <option value="">
@@ -1266,7 +1250,7 @@ function AdminEditor({
                   {[
                     ...new Set([
                       ...(categories.data ?? []),
-                      ...(row.category ? [row.category as string] : []),
+                      ...(selectedCategory ? [selectedCategory as string] : []),
                     ]),
                   ].map((name) => (
                     <option key={name} value={name}>
@@ -1278,10 +1262,41 @@ function AdminEditor({
               {categories.error && (
                 <Retry error={categories.error} retry={() => void categories.refetch()} />
               )}
-              {categories.isSuccess && !categories.data.length && (
-                <p className="text-sm text-slate-500">
-                  Create a category in Products → Categories first.
-                </p>
+              <button
+                type="button"
+                className="text-sm font-semibold text-brand underline"
+                disabled={categorySaving}
+                onClick={() => setShowNewCategory(!showNewCategory)}
+              >
+                {showNewCategory ? "Cancel new category" : "+ New category"}
+              </button>
+              {showNewCategory && (
+                <div className="space-y-2 rounded-xl border bg-secondary/40 p-3">
+                  <label className="block text-sm font-semibold">
+                    New category name
+                    <input
+                      className="commerce-input mt-2"
+                      value={newCategory}
+                      maxLength={80}
+                      disabled={categorySaving}
+                      onChange={(event) => setNewCategory(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          if (!categorySaving) void createCategory();
+                        }
+                      }}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="action-button"
+                    disabled={categorySaving}
+                    onClick={() => void createCategory()}
+                  >
+                    {categorySaving ? "Creating..." : "Create category"}
+                  </button>
+                </div>
               )}
             </div>
           ) : (
@@ -1518,9 +1533,6 @@ function AdminEditor({
           </label>
         </>
       )}
-      {resource === "categories" && (
-        <Field label="Category name" name="name" defaultValue={row.name ?? ""} required />
-      )}
       {resource === "inventory_batches" && (
         <>
           <input type="hidden" name="product_id" value={row.product_id} />
@@ -1530,54 +1542,77 @@ function AdminEditor({
       {resource === "shipping_zones" && (
         <>
           <label className="block text-sm font-semibold">
-            State / FCT
+            Fulfillment method
             <select
+              aria-label="Fulfillment method"
               className="commerce-input mt-2"
-              name="state"
-              aria-label="State / FCT"
-              defaultValue={deliveryState(row.state ?? "")}
-              required
+              value={fulfillmentMethod}
+              onChange={(event) =>
+                setFulfillmentMethod(event.target.value as "delivery" | "pickup")
+              }
             >
-              <option value="">Select state</option>
-              {[...new Set([...nigerianStates, ...(row.state ? [deliveryState(row.state)] : [])])]
-                .sort()
-                .map((state) => (
-                  <option key={state}>{state}</option>
-                ))}
+              <option value="delivery">Delivery</option>
+              <option value="pickup">Pickup</option>
             </select>
           </label>
-          {["lga", "area", "estimate"].map((key) => (
-            <Field
-              key={key}
-              label={
-                key === "lga"
-                  ? "LGA / city"
-                  : key === "estimate"
-                    ? "Estimated Delivery Time"
-                    : key[0]!.toUpperCase() + key.slice(1)
-              }
-              name={key}
-              defaultValue={row[key] ?? ""}
-              required={key !== "area"}
-            />
-          ))}
+          {fulfillmentMethod === "delivery" && (
+            <>
+              <label className="block text-sm font-semibold">
+                State / FCT
+                <select
+                  aria-label="State / FCT"
+                  className="commerce-input mt-2"
+                  name="state"
+                  defaultValue={deliveryState(row.state ?? "")}
+                  required
+                >
+                  <option value="">Select state</option>
+                  {nigerianStates.map((state) => (
+                    <option key={state}>{state}</option>
+                  ))}
+                </select>
+              </label>
+              <Field label="LGA / city" name="lga" defaultValue={row.lga ?? ""} required />
+            </>
+          )}
           <Field
-            label="Delivery fee (₦)"
-            name="fee"
-            type="number"
-            min="0"
-            step="0.01"
-            defaultValue={row.fee_kobo ? row.fee_kobo / 100 : 0}
+            label={fulfillmentMethod === "pickup" ? "Pickup location" : "Area"}
+            name="area"
+            defaultValue={row.area ?? ""}
+            required={fulfillmentMethod === "pickup"}
+            maxLength={100}
+          />
+          <Field
+            label={
+              fulfillmentMethod === "pickup"
+                ? "Estimated collection time"
+                : "Estimated Delivery Time"
+            }
+            name="estimate"
+            defaultValue={row.estimate ?? ""}
             required
           />
-          <Field
-            label="Free delivery from (₦, optional)"
-            name="free"
-            type="number"
-            min="0"
-            step="0.01"
-            defaultValue={row.free_over_kobo ? row.free_over_kobo / 100 : ""}
-          />
+          {fulfillmentMethod === "delivery" && (
+            <>
+              <Field
+                label="Fee (NGN)"
+                name="fee"
+                type="number"
+                min="0"
+                step="0.01"
+                defaultValue={row.fee_kobo ? row.fee_kobo / 100 : 0}
+                required
+              />
+              <Field
+                label="Free delivery from (NGN, optional)"
+                name="free"
+                type="number"
+                min="0"
+                step="0.01"
+                defaultValue={row.free_over_kobo ? row.free_over_kobo / 100 : ""}
+              />
+            </>
+          )}
           <label className="flex gap-2">
             <input name="active" type="checkbox" defaultChecked={row.active ?? true} />
             Available at checkout
@@ -1600,7 +1635,10 @@ function AdminEditor({
       <button
         className="action-button justify-self-start"
         disabled={
-          busy || photoUploading || (product && (categories.isPending || !!categories.error))
+          busy ||
+          photoUploading ||
+          categorySaving ||
+          (product && (categories.isPending || !!categories.error))
         }
       >
         {busy ? "Saving…" : "Save changes"}
@@ -1657,7 +1695,21 @@ function CustomerTable({ rows }: { rows: any[] }) {
                   "Not provided"
                 )}
               </td>
-              <td className="whitespace-nowrap px-4 py-4">{row.phone || "Not provided"}</td>
+              <td className="whitespace-nowrap px-4 py-4">
+                {customerWhatsApp(row.phone) ? (
+                  <a
+                    href={customerWhatsApp(row.phone)!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-brand hover:underline"
+                    aria-label={`WhatsApp ${row.name || row.phone}`}
+                  >
+                    {row.phone}
+                  </a>
+                ) : (
+                  row.phone || "Not provided"
+                )}
+              </td>
               <td className="min-w-52 px-4 py-4">
                 {row.addresses?.length
                   ? row.addresses.map((address: any) => (
@@ -1740,59 +1792,6 @@ function StaffInvite({ onSaved, canGrantOwner }: { onSaved: () => void; canGrant
   );
 }
 
-function CustomerInvite({ onSaved }: { onSaved: () => void }) {
-  const [busy, setBusy] = useState(false);
-  return (
-    <form
-      className="grid gap-5 md:grid-cols-2"
-      onInvalidCapture={() =>
-        toast.error("Check the highlighted customer details.", { id: "customer-validation" })
-      }
-      onSubmit={async (event) => {
-        event.preventDefault();
-        const values = Object.fromEntries(new FormData(event.currentTarget));
-        setBusy(true);
-        try {
-          const result = await send<{ message: string }>("admin/customer-invite", values);
-          toast.success(result.message);
-          onSaved();
-        } catch (error) {
-          notifyError(error);
-        } finally {
-          setBusy(false);
-        }
-      }}
-    >
-      <Field label="Full name" name="name" required minLength={2} maxLength={100} />
-      <Field label="Email address" name="email" type="email" required maxLength={180} />
-      <Field
-        label="Nigerian phone number"
-        name="phone"
-        type="tel"
-        required
-        pattern="(\+234|234|0)[789][01][0-9]{8}"
-      />
-      <Field label="Delivery address (optional)" name="address" maxLength={500} />
-      <label className="block text-sm font-semibold">
-        State / FCT
-        <select name="state" className="commerce-input mt-2" defaultValue="">
-          <option value="">Select state</option>
-          {nigerianStates.map((state) => (
-            <option key={state}>{state}</option>
-          ))}
-        </select>
-      </label>
-      <Field label="LGA / area (optional)" name="lga" maxLength={120} />
-      <p className="text-sm text-slate-500 md:col-span-2">
-        An email invitation lets the customer verify their email and set their own password.
-      </p>
-      <button className="action-button justify-self-start" disabled={busy}>
-        {busy ? "Sending invitation…" : "Add customer & send invitation"}
-      </button>
-    </form>
-  );
-}
-
 function SettingsForm({ value, onSaved }: { value: any; onSaved: () => void }) {
   const [logo, setLogo] = useState(value.public_data?.pcn_logo ?? "");
   const [busy, setBusy] = useState(false);
@@ -1813,6 +1812,9 @@ function SettingsForm({ value, onSaved }: { value: any; onSaved: () => void }) {
           [
             "address",
             "opening_hours",
+            "instagram_url",
+            "facebook_url",
+            "tiktok_url",
             "privacy_text",
             "refund_text",
             "shipping_text",
@@ -1829,7 +1831,10 @@ function SettingsForm({ value, onSaved }: { value: any; onSaved: () => void }) {
               ? Number(d["prescription_retention_days"])
               : null,
             ...Object.fromEntries(
-              ["fee_rate", "fee_fixed", "fee_threshold", "fee_cap"].map((k) => [k, Number(d[k])]),
+              ["fee_rate", "fee_fixed", "fee_threshold", "fee_cap"].map((k) => [
+                k,
+                Math.round(Number(d[k]) * 100),
+              ]),
             ),
           });
           toast.success("Business settings saved.");
@@ -1924,6 +1929,17 @@ function SettingsForm({ value, onSaved }: { value: any; onSaved: () => void }) {
           </label>
         </details>
       ))}
+      <section className="grid gap-4 sm:grid-cols-2" aria-label="Social profiles">
+        {socialProfiles.map((profile) => (
+          <Field
+            key={profile.key}
+            name={profile.key}
+            label={`${profile.label} link`}
+            type="url"
+            defaultValue={value.public_data?.[profile.key] ?? profile.url}
+          />
+        ))}
+      </section>
       <PhotoUpload value={logo} onChange={setLogo} label="Authorised PCN artwork" />
       <label className="block text-sm font-semibold">
         Refund treatment of processing fees
@@ -1949,10 +1965,10 @@ function SettingsForm({ value, onSaved }: { value: any; onSaved: () => void }) {
         <summary className="cursor-pointer text-sm font-semibold">Payment fee schedule</summary>
         <div className="mt-5 grid gap-5 sm:grid-cols-2">
           {[
-            ["fee_rate", "Rate in basis points (150 = 1.5%)"],
-            ["fee_fixed", "Fixed fee (kobo)"],
-            ["fee_threshold", "Fixed fee threshold (kobo)"],
-            ["fee_cap", "Fee cap (kobo)"],
+            ["fee_rate", "Processing rate (%)"],
+            ["fee_fixed", "Fixed fee (NGN)"],
+            ["fee_threshold", "Fixed fee threshold (NGN)"],
+            ["fee_cap", "Fee cap (NGN)"],
           ].map(([key, label]) => (
             <Field
               key={key}
@@ -1960,7 +1976,8 @@ function SettingsForm({ value, onSaved }: { value: any; onSaved: () => void }) {
               label={label!}
               type="number"
               min="0"
-              defaultValue={value[key!]}
+              step="0.01"
+              defaultValue={value[key!] / 100}
               required
             />
           ))}

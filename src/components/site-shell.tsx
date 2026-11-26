@@ -1,3 +1,4 @@
+import { SocialLinks } from "./social-links";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useCommerce } from "./commerce-provider";
@@ -27,6 +28,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
       <footer className="mt-12 bg-brand px-5 py-10 text-white">
         <div className="mx-auto max-w-6xl space-y-5">
           <p className="font-bold">Relief Point Pharmacy</p>
+          <SocialLinks settings={shop.settings} />
           <div className="flex flex-wrap gap-5 text-sm">
             <Link to="/about">About us</Link>
             <Link to="/contact">Contact us</Link>

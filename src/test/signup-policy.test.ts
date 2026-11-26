@@ -3,7 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 import { authAction } from "@/server/auth";
 import type { Context } from "@/server/session";
 describe("signup policy acknowledgement", () => {
-  const input = { email: "buyer@example.com", password: "password12345", name: "Buyer One" };
+  const input = {
+    email: "buyer@example.com",
+    password: "password12345",
+    name: "Buyer One",
+    phone: "08012345678",
+  };
   function context() {
     const signUp = vi.fn(async () => ({ error: null }));
     const ctx = {
@@ -22,6 +27,15 @@ describe("signup policy acknowledgement", () => {
     });
     expect(signUp).not.toHaveBeenCalled();
   });
+  it("requires a valid signup phone when browser validation is bypassed", async () => {
+    for (const phone of [undefined, "invalid", "080123"]) {
+      const { ctx, signUp } = context();
+      await expect(
+        authAction(ctx, "signup", { ...input, phone, accepted_terms: true }),
+      ).rejects.toThrow();
+      expect(signUp).not.toHaveBeenCalled();
+    }
+  });
   it("stores the server's acknowledgement timestamp and terms version without auto-verifying email", async () => {
     const { ctx, signUp } = context();
     await authAction(ctx, "signup", {
@@ -35,6 +49,7 @@ describe("signup policy acknowledgement", () => {
       options: {
         data: {
           name: input.name,
+          phone: input.phone,
           terms_version: "2026-11-26",
           terms_accepted_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
         },

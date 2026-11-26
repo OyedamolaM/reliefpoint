@@ -19,7 +19,7 @@ vi.mock("@/server/mfa-browser", () => ({
   revokeRememberedMfa: vi.fn(async () => {}),
   rememberMfa: vi.fn(),
 }));
-import { inviteCustomer } from "@/server/admin";
+import { inviteCustomer, addCustomer } from "@/server/admin";
 import { authCallback } from "@/server/auth";
 import { requireStaff } from "@/server/session";
 import type { Context } from "@/server/session";
@@ -33,6 +33,10 @@ function context() {
     error: null as unknown,
   }));
   const insert = vi.fn(async () => ({ error: null }));
+  const createUser = vi.fn(async (_input: { password: string }) => ({
+    data: { user: { id: "new-customer" } },
+    error: null,
+  }));
   const upsert = vi.fn(async () => ({ error: null }));
   const updated: unknown[] = [];
   const verifyOtp = vi.fn(async () => ({ error: null as unknown }));
@@ -44,7 +48,7 @@ function context() {
       "https://www.reliefpointpharmacy.com/api/auth/confirm?token_hash=valid-invite-hash&type=invite",
     ),
     db: {
-      auth: { admin: { inviteUserByEmail: invite } },
+      auth: { admin: { inviteUserByEmail: invite, createUser } },
       from: () => ({
         insert,
         upsert,
@@ -70,9 +74,30 @@ function context() {
       },
     },
   } as unknown as Context;
-  return { ctx, invite, insert, upsert, verifyOtp, exchangeCodeForSession, updated };
+  return { ctx, invite, insert, upsert, verifyOtp, exchangeCodeForSession, updated, createUser };
 }
 describe("customer invitations", () => {
+  it("saves an unconfirmed customer without sending an invitation or exposing their temporary password", async () => {
+    const { ctx, invite, createUser, insert } = context();
+    const result = await addCustomer(ctx, {
+      name: "New Buyer",
+      email: "new@example.com",
+      phone: "08012345678",
+      address: "12 Oregun Road",
+    });
+    expect(invite).not.toHaveBeenCalled();
+    expect(createUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: "new@example.com",
+        email_confirm: false,
+        password: expect.any(String),
+      }),
+    );
+    expect(createUser.mock.calls[0]![0].password.length).toBeGreaterThan(40);
+    expect(JSON.stringify(result)).not.toContain(createUser.mock.calls[0]![0].password);
+    expect(result.message).toBe("Customer added.");
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ state: "", lga: "" }));
+  });
   it("requires staff access before creating an account", async () => {
     access.allowed = false;
     const { ctx, invite } = context();

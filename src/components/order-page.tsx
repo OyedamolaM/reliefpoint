@@ -1,3 +1,7 @@
+import { OrderReceipt } from "./order-receipt";
+import { OrderTracking } from "./order-tracking";
+import { TrackingEditor, InternalNoteForm } from "./order-tracking-editor";
+import { receiptDate } from "@/lib/receipt";
 import { uploadFile } from "@/lib/upload";
 import { useEffect, useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -45,7 +49,17 @@ export function OrderView({
   useEffect(() => {
     if (data.error) notifyError(data.error);
   }, [data.error]);
-  if (data.error) return <Retry error={data.error} retry={() => void data.refetch()} />;
+  if (data.error)
+    return (
+      <div className="space-y-4">
+        <Retry error={data.error} retry={() => void data.refetch()} />
+        {!admin && (
+          <button className="action-button" onClick={() => shop.openPanel("tracking")}>
+            Request a fresh tracking link
+          </button>
+        )}
+      </div>
+    );
   if (!data.data) return <p>Loading your order…</p>;
   const { order, items, events, prescriptions, refunds, payment, can_resume } = data.data;
   const ownedSend = <T,>(path: string, body: unknown) =>
@@ -66,8 +80,8 @@ export function OrderView({
   const action = async (name: string, input: unknown) => {
     setBusy(true);
     try {
-      await send(`admin/actions/${name}`, input);
-      toast.success("Changes saved.");
+      const result = await send<{ message: string }>(`admin/actions/${name}`, input);
+      toast.success(result.message);
       refresh();
       return true;
     } catch (error) {
@@ -223,31 +237,40 @@ export function OrderView({
         </dl>
       </div>
       <div className="rounded-xl border p-4">
-        <h2 className="mb-3 font-bold">Delivery details</h2>
+        <h2 className="mb-3 font-bold">
+          {order.zone_snapshot.fulfillment_method === "pickup"
+            ? "Pickup details"
+            : "Delivery details"}
+        </h2>
         <p>
           {order.contact.name} · {order.contact.phone}
         </p>
         <p>
-          {order.contact.address}, {order.zone_snapshot.area}, {order.zone_snapshot.lga},{" "}
-          {order.zone_snapshot.state}
+          {order.zone_snapshot.fulfillment_method === "pickup"
+            ? order.zone_snapshot.area
+            : [
+                order.contact.address,
+                order.zone_snapshot.area,
+                order.zone_snapshot.lga,
+                order.zone_snapshot.state,
+              ]
+                .filter(Boolean)
+                .join(", ")}
         </p>
         <p className="mt-2 text-sm">{order.zone_snapshot.estimate}</p>
         {order.contact.note && <p className="mt-2 text-sm">{order.contact.note}</p>}
       </div>
-      {events.length > 0 && (
-        <section>
-          <h2 className="font-bold">Delivery updates</h2>
-          {events.map((event: any, index: number) => (
-            <div className="mt-3 border-l-2 border-brand pl-4" key={index}>
-              <p className="capitalize">{event.status}</p>
-              <p className="text-sm">{event.note}</p>
-              <p className="text-sm">
-                {event.courier} {event.tracking_reference}
-              </p>
-            </div>
-          ))}
-        </section>
-      )}
+      <OrderReceipt
+        document={data.data.receipt}
+        id={id}
+        {...(token ? { token } : {})}
+        admin={admin}
+      />
+      <OrderTracking
+        order={order}
+        events={events}
+        paidAt={data.data.receipt?.paid_at ?? payment?.verified_at}
+      />
       {order.needs_prescription && (
         <section className="rounded-xl border p-4">
           <h2 className="font-bold">Prescription review</h2>
@@ -400,26 +423,68 @@ export function OrderView({
           </section>
         )}
       {admin && fulfillment && (
-        <form
-          className="space-y-3 rounded-xl border p-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void action("delivery", { id, ...Object.fromEntries(new FormData(e.currentTarget)) });
-          }}
-        >
-          <h2 className="font-bold">Update delivery</h2>
-          <select aria-label="Delivery status" className="commerce-input" name="value">
-            <option value="processing">Processing</option>
-            <option value="dispatched">Dispatched</option>
-            <option value="delivered">Delivered</option>
-          </select>
-          <Field label="Courier" name="courier" />
-          <Field label="Tracking reference" name="tracking_reference" />
-          <Field label="Customer update" name="note" />
-          <button className="action-button" disabled={busy}>
-            Save delivery update
-          </button>
-        </form>
+        <TrackingEditor
+          key={order.fulfillment_status + events.length}
+          id={id}
+          pickup={order.zone_snapshot.fulfillment_method === "pickup"}
+          status={order.fulfillment_status}
+          lastEvent={events.at(-1)}
+          busy={busy}
+          action={action}
+        />
+      )}
+      {admin && (
+        <section className="space-y-4 rounded-2xl border bg-white p-5 sm:p-6">
+          <h2 className="font-bold">Staff notes</h2>
+          {(data.data.staff_notes ?? []).map((note: any) => (
+            <div key={note.id} className="rounded-xl bg-secondary p-3">
+              <p className="whitespace-pre-wrap text-sm">{note.note}</p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {receiptDate(note.created_at)} WAT
+              </p>
+            </div>
+          ))}
+          <InternalNoteForm id={id} busy={busy} action={action} />
+        </section>
+      )}
+      {admin && (
+        <section className="space-y-3 rounded-2xl border bg-white p-5 sm:p-6">
+          <h2 className="font-bold">Customer emails</h2>
+          {(data.data.notifications ?? []).length === 0 && (
+            <p className="text-sm text-muted-foreground">No order emails queued yet.</p>
+          )}
+          {(data.data.notifications ?? []).map((mail: any) => (
+            <div
+              key={mail.id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 text-sm"
+            >
+              <div>
+                <p className="font-semibold">{mail.subject}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {receiptDate(mail.created_at)} WAT
+                </p>
+              </div>
+              <div>
+                <span className="capitalize">
+                  {mail.status === "sent"
+                    ? "Accepted by email provider"
+                    : mail.status === "pending"
+                      ? "Queued"
+                      : mail.status}
+                </span>
+                {manage && mail.status === "failed" && (
+                  <button
+                    className="ml-3 underline"
+                    disabled={busy}
+                    onClick={() => void action("retry-mail", { id: mail.id })}
+                  >
+                    Retry email
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </section>
       )}
       {admin && manage && (!order.payment_method || order.payment_method === "paystack") && (
         <form

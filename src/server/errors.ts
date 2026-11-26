@@ -21,6 +21,13 @@ export function checkDb<T>(result: { data: T; error: unknown }): T {
       DELIVERY_UNAVAILABLE:
         "Delivery isn’t available for this area. Please select another area or contact us.",
       ORDER_ON_HOLD: "This order must be paid and approved by the pharmacist before dispatch.",
+      CATEGORY_INVALID: "Enter a category name between 2 and 80 characters.",
+      CATEGORY_UNAVAILABLE: "This category no longer exists. Refresh the category list.",
+      CATEGORY_PRODUCTS_MISSING:
+        "A selected product no longer exists. Refresh the product list and try again.",
+      TRACKING_INVALID: "Check the delivery update and try again.",
+      TRACKING_EMPTY: "Add a customer update or delivery information before saving.",
+      TRACKING_CONFLICT: "This update was already saved with different details. Refresh the order.",
       DELIVERY_SEQUENCE: "Choose the next delivery stage for this order.",
       REFUND_POLICY_REQUIRED:
         "Approve the processing-fee refund policy in business settings first.",

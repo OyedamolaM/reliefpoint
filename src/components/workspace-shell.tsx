@@ -149,12 +149,14 @@ export function WorkspaceModal({
   title,
   description,
   children,
+  size = "wide",
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   description?: string;
   children: ReactNode;
+  size?: "compact" | "medium" | "wide";
 }) {
   return (
     <Dialog
@@ -163,7 +165,9 @@ export function WorkspaceModal({
         if (!v) onClose();
       }}
     >
-      <DialogContent className="max-h-[90dvh] w-[calc(100%-2rem)] max-w-3xl overflow-y-auto rounded-2xl border-slate-200 bg-white p-5 sm:p-8">
+      <DialogContent
+        className={`max-h-[90dvh] w-[calc(100%-2rem)] ${size === "compact" ? "max-w-lg" : size === "medium" ? "max-w-xl" : "max-w-3xl"} overflow-y-auto rounded-2xl border-slate-200 bg-white p-5 sm:p-8`}
+      >
         <DialogTitle className="pr-6 text-xl">{title}</DialogTitle>
         <DialogDescription className={description ? "" : "sr-only"}>
           {description || title}

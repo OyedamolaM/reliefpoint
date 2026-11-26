@@ -56,6 +56,9 @@ describe("secure account forms", () => {
       "_blank",
     );
     fireEvent.change(screen.getByLabelText("Full name"), { target: { value: "Amina Test" } });
+    fireEvent.change(screen.getByLabelText("Nigerian phone number"), {
+      target: { value: "08012345678" },
+    });
     fireEvent.change(screen.getByLabelText("Email address"), {
       target: { value: "amina@example.com" },
     });
