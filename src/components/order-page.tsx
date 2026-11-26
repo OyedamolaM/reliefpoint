@@ -8,6 +8,7 @@ import { useAccount } from "./auth-provider";
 import { useCommerce } from "./commerce-provider";
 import { SiteShell } from "./site-shell";
 import { Field, Retry } from "./account-page";
+import { ManualPaymentForm } from "./manual-payment-form";
 
 export function OrderPage({ id, token }: { id: string; token?: string }) {
   return (
@@ -97,62 +98,63 @@ export function OrderView({
           </div>
         ))}
       </div>
-      {order.payment_status === "pending" && (
+      {order.payment_method && order.payment_method !== "paystack" && (
         <div className="rounded-xl border p-4">
-          <p>We haven’t confirmed this payment yet. Check its status before paying again.</p>
-          {["failed", "abandoned", "reversed"].includes(payment?.provider_status) && (
-            <p className="mt-3 text-sm">
-              The last payment attempt wasn’t completed. No successful payment has been confirmed.
+          <p className="font-semibold">
+            {order.payment_method === "manual_pending"
+              ? "Awaiting payment to the pharmacy"
+              : order.payment_method === "cash"
+                ? "Payment recorded · Cash"
+                : "Payment recorded · Bank transfer"}
+          </p>
+          {admin && data.data.manual_payment && (
+            <p className="mt-2 text-sm">
+              Receipt / transfer reference: {data.data.manual_payment.reference}
             </p>
           )}
-          <button
-            className="action-button mt-3"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                const result = admin
-                  ? await send<{ status: string }>("admin/reconcile", {
-                      reference: order.reference,
-                    })
-                  : await ownedSend<{ status: string }>("customer/reconcile", { id });
-                toast[result.status === "paid" ? "success" : "info"](
-                  result.status === "paid"
-                    ? "Your payment has been confirmed."
-                    : ["failed", "abandoned", "reversed"].includes(result.status)
-                      ? "That payment attempt wasn’t completed. Check your order before trying again."
-                      : "We’re still checking your payment. Please don’t pay again.",
-                );
-                refresh();
-              } catch (error) {
-                notifyError(error);
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            Check payment status
-          </button>
-          {!admin && can_resume && (
+          {admin &&
+            manage &&
+            order.payment_status === "pending" &&
+            order.payment_method === "manual_pending" && (
+              <div className="mt-4">
+                <ManualPaymentForm id={id} total={order.total} onSaved={refresh} />
+              </div>
+            )}
+          {order.payment_method !== "manual_pending" && admin && (
+            <p className="mt-2 text-sm text-slate-500">
+              Cash and bank-transfer refunds are handled outside Paystack.
+            </p>
+          )}
+        </div>
+      )}
+      {order.payment_status === "pending" &&
+        (!order.payment_method || order.payment_method === "paystack") && (
+          <div className="rounded-xl border p-4">
+            <p>We haven’t confirmed this payment yet. Check its status before paying again.</p>
+            {["failed", "abandoned", "reversed"].includes(payment?.provider_status) && (
+              <p className="mt-3 text-sm">
+                The last payment attempt wasn’t completed. No successful payment has been confirmed.
+              </p>
+            )}
             <button
-              className="ml-4 mt-3 underline"
+              className="action-button mt-3"
               disabled={busy}
               onClick={async () => {
                 setBusy(true);
                 try {
-                  const checked = await ownedSend<{ status: string }>("customer/reconcile", { id });
-                  if (
-                    ["paid", "review", "refunded", "partially_refunded"].includes(checked.status)
-                  ) {
-                    refresh();
-                    toast.info("Your payment has an update. Please review this order.");
-                    return;
-                  }
-                  const result = await ownedSend<{ url: string }>("payments/initialize", {
-                    id,
-                    channel: "card",
-                  });
-                  window.location.assign(result.url);
+                  const result = admin
+                    ? await send<{ status: string }>("admin/reconcile", {
+                        reference: order.reference,
+                      })
+                    : await ownedSend<{ status: string }>("customer/reconcile", { id });
+                  toast[result.status === "paid" ? "success" : "info"](
+                    result.status === "paid"
+                      ? "Your payment has been confirmed."
+                      : ["failed", "abandoned", "reversed"].includes(result.status)
+                        ? "That payment attempt wasn’t completed. Check your order before trying again."
+                        : "We’re still checking your payment. Please don’t pay again.",
+                  );
+                  refresh();
                 } catch (error) {
                   notifyError(error);
                 } finally {
@@ -160,11 +162,42 @@ export function OrderView({
                 }
               }}
             >
-              Continue secure checkout
+              Check payment status
             </button>
-          )}
-        </div>
-      )}
+            {!admin && can_resume && (
+              <button
+                className="ml-4 mt-3 underline"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    const checked = await ownedSend<{ status: string }>("customer/reconcile", {
+                      id,
+                    });
+                    if (
+                      ["paid", "review", "refunded", "partially_refunded"].includes(checked.status)
+                    ) {
+                      refresh();
+                      toast.info("Your payment has an update. Please review this order.");
+                      return;
+                    }
+                    const result = await ownedSend<{ url: string }>("payments/initialize", {
+                      id,
+                      channel: "card",
+                    });
+                    window.location.assign(result.url);
+                  } catch (error) {
+                    notifyError(error);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Continue secure checkout
+              </button>
+            )}
+          </div>
+        )}
       <div className="rounded-xl border p-4">
         <h2 className="mb-3 font-bold">Items</h2>
         {items.map((item: any) => (
@@ -388,7 +421,7 @@ export function OrderView({
           </button>
         </form>
       )}
-      {admin && manage && (
+      {admin && manage && (!order.payment_method || order.payment_method === "paystack") && (
         <form
           className="space-y-3 rounded-xl border p-4"
           onSubmit={async (e) => {

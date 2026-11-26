@@ -40,6 +40,29 @@ vi.mock("@/lib/api", () => ({
   notifyError: vi.fn(),
   send: vi.fn(async (path: string, input: unknown) => {
     state.actions.push({ path, input });
+    if (path === "admin/order-quote")
+      return {
+        quote: {
+          subtotal: 250000,
+          delivery: 200000,
+          processing: 0,
+          total: 450000,
+          prescription: false,
+          eta: "Next day",
+        },
+      };
+    if (path === "admin/order-create")
+      return {
+        order: {
+          id: "00000000-0000-4000-8000-000000000020",
+          reference: "RP-example",
+          payment_status: "pending",
+        },
+        total: 450000,
+        url: "https://pharmacy.example/orders/example?token=private",
+        expires_at: "2026-11-26T14:00:00Z",
+      };
+    if (path === "admin/manual-payment") return { status: "paid", message: "Payment recorded." };
     return path === "auth/mfa-factors"
       ? { factors: state.factors }
       : path === "admin/customer-invite" || path === "admin/staff-invite"
@@ -48,6 +71,31 @@ vi.mock("@/lib/api", () => ({
   }),
   api: async (path: string) => {
     state.calls.push(path);
+    if (path === "zones")
+      return {
+        zones: [
+          {
+            id: "00000000-0000-4000-8000-000000000010",
+            state: "Lagos",
+            lga: "Ikeja",
+            area: "Oregun",
+            active: true,
+          },
+        ],
+      };
+    if (path.startsWith("catalog?"))
+      return {
+        products: [
+          {
+            id: "00000000-0000-4000-8000-000000000011",
+            name: "Vitamin C",
+            price: 2500,
+            inStock: true,
+          },
+        ],
+        configured: true,
+        more: false,
+      };
     if (path.startsWith("admin/staff_roles?"))
       return {
         rows: [
@@ -139,6 +187,63 @@ beforeEach(() => {
   state.factors = [{ id: "factor-1", name: "ReliefPoint" }];
 });
 describe("pharmacy workspaces", () => {
+  it("uses an explicit tips label instead of Add record", async () => {
+    render(<AdminPage />);
+    fireEvent.click(
+      within(screen.getByRole("navigation", { name: "Administration" })).getByRole("button", {
+        name: "Health Tips",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add tips" }));
+    expect(screen.getByRole("dialog", { name: "Add tips" })).toBeVisible();
+    expect(screen.queryByText("Add record")).not.toBeInTheDocument();
+  });
+  it("creates a manual purchase, reviews server totals and records a confirmed cash payment", async () => {
+    render(<AdminPage />);
+    fireEvent.click(
+      within(screen.getByRole("navigation", { name: "Administration" })).getByRole("button", {
+        name: "Orders",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add order" }));
+    const modal = screen.getByRole("dialog", { name: "Add order" });
+    for (const [label, value] of [
+      ["Customer name", "Buyer One"],
+      ["Email address", "buyer@example.com"],
+      ["Phone number", "08012345678"],
+      ["Street address", "12 Oregun Road"],
+    ])
+      fireEvent.change(within(modal).getByLabelText(label!), { target: { value } });
+    await within(modal).findByRole("option", { name: "Lagos" });
+    fireEvent.change(within(modal).getByLabelText("State / FCT"), { target: { value: "Lagos" } });
+    fireEvent.change(within(modal).getByLabelText("Delivery area"), {
+      target: { value: "00000000-0000-4000-8000-000000000010" },
+    });
+    fireEvent.click(await within(modal).findByRole("button", { name: "Add Vitamin C" }));
+    fireEvent.click(within(modal).getByRole("button", { name: "Review order" }));
+    fireEvent.click(await within(modal).findByRole("button", { name: "Create order" }));
+    await within(modal).findByText("RP-example");
+    expect(state.actions.find((a) => a.path === "admin/order-create")?.input).toMatchObject({
+      contact: { name: "Buyer One", email: "buyer@example.com" },
+      items: [{ id: "00000000-0000-4000-8000-000000000011", quantity: 1 }],
+    });
+    expect(within(modal).getByText("Record payment")).toBeVisible();
+    fireEvent.change(within(modal).getByLabelText("Receipt / transfer reference"), {
+      target: { value: "CASH-001" },
+    });
+    fireEvent.click(
+      within(modal).getByRole("checkbox", { name: "I have confirmed receipt of this payment." }),
+    );
+    fireEvent.click(within(modal).getByRole("button", { name: "Confirm payment received" }));
+    await waitFor(() =>
+      expect(state.actions.find((a) => a.path === "admin/manual-payment")?.input).toMatchObject({
+        method: "cash",
+        amount: 450000,
+        reference: "CASH-001",
+      }),
+    );
+    expect(await within(modal).findByText(/Payment confirmed/)).toBeVisible();
+  });
   it("lets an administrator invite staff by email without an account ID or owner escalation", async () => {
     render(<AdminPage />);
     fireEvent.click(
@@ -280,7 +385,7 @@ describe("pharmacy workspaces", () => {
         name: "Products",
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Add new" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add products" }));
     const category = await screen.findByRole("combobox", { name: "Category" });
     await waitFor(() => expect(category).toBeEnabled());
     expect(within(category).getByRole("option", { name: "Skincare" })).toBeInTheDocument();
@@ -288,7 +393,7 @@ describe("pharmacy workspaces", () => {
     expect(category).toHaveValue("Vitamins");
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
     state.categoryNames.push("Medical devices");
-    fireEvent.click(screen.getByRole("button", { name: "Add new" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add products" }));
     expect(await screen.findByRole("option", { name: "Medical devices" })).toBeInTheDocument();
   });
   it("opens mobile date filters in a modal and applies a selected period", async () => {
@@ -333,8 +438,8 @@ describe("pharmacy workspaces", () => {
       }),
     );
     await screen.findByText("No delivery zones yet");
-    fireEvent.click(screen.getByRole("button", { name: "Add new" }));
-    const modal = screen.getByRole("dialog", { name: "Add record" });
+    fireEvent.click(screen.getByRole("button", { name: "Add delivery zone" }));
+    const modal = screen.getByRole("dialog", { name: "Add delivery zone" });
     const state = within(modal).getByLabelText("State / FCT");
     expect(state.tagName).toBe("SELECT");
     expect(state.querySelectorAll("option")).toHaveLength(38);
@@ -398,7 +503,7 @@ describe("pharmacy workspaces", () => {
         name: "Products",
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Add new" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add products" }));
     const modal = screen.getByRole("dialog", { name: "Add products" });
     expect(within(modal).getByLabelText("Product name")).toBeInTheDocument();
     expect(within(modal).getByLabelText("Page name")).not.toBeRequired();

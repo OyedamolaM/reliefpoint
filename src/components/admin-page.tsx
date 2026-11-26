@@ -16,6 +16,7 @@ import { AuthForm, Field, Pagination, Retry, AuthenticatorPanel } from "./accoun
 import { SiteShell } from "./site-shell";
 import { formatNaira } from "@/lib/commerce";
 import { OrderView } from "./order-page";
+import { AdminOrderForm } from "./admin-order-form";
 import { policyDefaults } from "@/lib/business";
 import {
   LayoutDashboard,
@@ -96,6 +97,17 @@ const dateFilteredSections = [
   "webhook_events",
   "audit_log",
 ];
+const recordNames: Record<string, string> = {
+  products: "products",
+  categories: "category",
+  inventory_batches: "product stock",
+  shipping_zones: "delivery zone",
+  blog_posts: "tips",
+  staff_roles: "staff",
+  profiles: "customer",
+  orders: "order",
+  pending_orders: "order",
+};
 export function PhotoUpload({
   value,
   onChange,
@@ -491,14 +503,12 @@ export function AdminPage() {
                           <Upload size={16} /> Import products
                         </button>
                       )}
-                    {(editable || active === "profiles") && (
+                    {(editable ||
+                      active === "profiles" ||
+                      (["orders", "pending_orders"].includes(active) &&
+                        user.roles.some((r) => ["owner", "admin"].includes(r)))) && (
                       <button className="action-button" onClick={() => setEditing({})}>
-                        <Plus size={16} className="mr-2" />{" "}
-                        {active === "profiles"
-                          ? "Add customer"
-                          : active === "staff_roles"
-                            ? "Add staff"
-                            : "Add new"}
+                        <Plus size={16} className="mr-2" /> {`Add ${recordNames[active]}`}
                       </button>
                     )}
                   </div>
@@ -909,21 +919,23 @@ export function AdminPage() {
                 <WorkspaceModal
                   open={!!editing}
                   onClose={() => setEditing(null)}
-                  title={
-                    active === "staff_roles"
-                      ? "Add staff"
-                      : active === "profiles"
-                        ? "Add customer"
-                        : active === "products"
-                          ? editing?.id
-                            ? "Edit product"
-                            : "Add products"
-                          : editing?.id
-                            ? "Edit record"
-                            : "Add record"
-                  }
+                  title={`${editing?.id ? "Edit" : "Add"} ${active === "products" && editing?.id ? "product" : recordNames[active] || sections.find((s) => s.key === active)?.label.toLowerCase()}`}
                 >
-                  {editing && active === "staff_roles" ? (
+                  {editing && ["orders", "pending_orders"].includes(active) ? (
+                    <AdminOrderForm
+                      onCreated={refresh}
+                      onView={(id, status) => {
+                        setEditing(null);
+                        setSection(
+                          ["paid", "partially_refunded", "refunded"].includes(status)
+                            ? "orders"
+                            : "pending_orders",
+                        );
+                        setPage(0);
+                        setOrderId(id);
+                      }}
+                    />
+                  ) : editing && active === "staff_roles" ? (
                     <StaffInvite
                       onSaved={() => {
                         setEditing(null);
@@ -1541,7 +1553,7 @@ function AdminEditor({
                 key === "lga"
                   ? "LGA / city"
                   : key === "estimate"
-                    ? "Delivery estimate"
+                    ? "Estimated Delivery Time"
                     : key[0]!.toUpperCase() + key.slice(1)
               }
               name={key}
@@ -1798,10 +1810,14 @@ function SettingsForm({ value, onSaved }: { value: any; onSaved: () => void }) {
         setBusy(true);
         const d = Object.fromEntries(new FormData(e.currentTarget));
         const public_data = Object.fromEntries(
-          ["address", "opening_hours", "privacy_text", "refund_text", "shipping_text"].map((k) => [
-            k,
-            d[k] ?? "",
-          ]),
+          [
+            "address",
+            "opening_hours",
+            "privacy_text",
+            "refund_text",
+            "shipping_text",
+            "terms_text",
+          ].map((k) => [k, d[k] ?? ""]),
         );
         try {
           await send("admin/settings", {
@@ -1888,6 +1904,7 @@ function SettingsForm({ value, onSaved }: { value: any; onSaved: () => void }) {
         ["privacy_text", "Privacy policy"],
         ["refund_text", "Refund policy"],
         ["shipping_text", "Shipping policy"],
+        ["terms_text", "Terms and Conditions"],
       ].map(([key, label]) => (
         <details
           key={key}
