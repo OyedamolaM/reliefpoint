@@ -1,5 +1,5 @@
 import { render } from "./render";
-import { fireEvent, screen, cleanup, within } from "@testing-library/react";
+import { fireEvent, screen, cleanup, within, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CommerceProvider } from "@/components/commerce-provider";
 import { PharmacyStorefront } from "@/components/pharmacy-storefront";
@@ -12,7 +12,7 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 describe("retail storefront", () => {
-  it("searches, sorts and saves a product without repeated demo copy", () => {
+  it("searches, sorts and saves a product without repeated demo copy", async () => {
     const { container } = render(
       <CommerceProvider>
         <PharmacyStorefront design="flagship" />
@@ -21,7 +21,10 @@ describe("retail storefront", () => {
     expect(screen.queryByText(/demo/i)).not.toBeInTheDocument();
     const search = within(container.querySelector(".desktop-search") as HTMLElement);
     fireEvent.change(search.getByLabelText("Search products"), { target: { value: "cerave" } });
-    fireEvent.click(search.getByLabelText("Search catalog"));
+    await waitFor(
+      () => expect(container.querySelectorAll(".retail-product-grid article")).toHaveLength(2),
+      { timeout: 3500 },
+    );
     expect(container.querySelectorAll(".retail-product-grid article")).toHaveLength(2);
     fireEvent.change(screen.getByLabelText("Sort by"), { target: { value: "price-low" } });
     expect(container.querySelector(".retail-product-grid article h3")).toHaveTextContent(

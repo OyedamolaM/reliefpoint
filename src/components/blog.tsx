@@ -1,3 +1,4 @@
+import { SectionLoading } from "./section-loading";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
@@ -33,12 +34,18 @@ export function BlogCards({ posts }: { posts: Partial<BlogPost>[] }) {
     </div>
   );
 }
-export function HealthTipsPage({ initial }: { initial: { posts: any[]; more: boolean } }) {
+export function HealthTipsPage({
+  initial,
+}: {
+  initial: { posts: any[]; more: boolean; categories?: string[] };
+}) {
   const [page, setPage] = useState(0);
+  const [category, setCategory] = useState("");
   const posts = useQuery({
-    queryKey: ["posts", page],
-    queryFn: () => api<typeof initial>(`posts?page=${page}`),
-    initialData: page === 0 ? initial : undefined,
+    queryKey: ["posts", page, category],
+    queryFn: () =>
+      api<typeof initial>(`posts?page=${page}&category=${encodeURIComponent(category)}`),
+    initialData: page === 0 && !category ? initial : undefined,
     staleTime: 300000,
   });
   return (
@@ -48,6 +55,25 @@ export function HealthTipsPage({ initial }: { initial: { posts: any[]; more: boo
       <p className="mb-8 max-w-xl text-muted-foreground">
         Practical advice for everyday health and wellbeing.
       </p>
+      <label className="mb-6 block max-w-sm text-sm font-semibold">
+        Category
+        <select
+          className="commerce-input mt-2"
+          value={category}
+          onChange={(event) => {
+            setCategory(event.target.value);
+            setPage(0);
+          }}
+        >
+          <option value="">All categories</option>
+          {(posts.data?.categories ?? initial.categories ?? []).map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {posts.isPending && <SectionLoading label="Loading health tips" />}
       {posts.error && <Retry error={posts.error} retry={() => void posts.refetch()} />}
       <BlogCards posts={posts.data?.posts ?? []} />
       {posts.data?.posts.length === 0 && <p>Our health articles will appear here.</p>}
@@ -133,7 +159,7 @@ export function BlogPreview({ id }: { id: string }) {
       ) : result.data ? (
         <Article post={result.data.post} />
       ) : (
-        <p>Loading preview…</p>
+        <SectionLoading label="Loading preview" compact />
       )}
     </SiteShell>
   );

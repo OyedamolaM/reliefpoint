@@ -243,13 +243,24 @@ export function filterProducts(
   stockOnly: boolean,
 ) {
   const term = query.trim().toLowerCase();
-  return products.filter(
-    (p) =>
-      (!term || `${p.name} ${p.detail} ${p.category}`.toLowerCase().includes(term)) &&
-      (category === "All" || p.category === category) &&
-      p.price <= maxPrice &&
-      (!stockOnly || p.inStock),
-  );
+  return products
+    .filter(
+      (p) =>
+        (!term ||
+          term
+            .split(/\s+/)
+            .every((word) => `${p.name} ${p.detail} ${p.category}`.toLowerCase().includes(word))) &&
+        (category === "All" || p.category === category) &&
+        p.price <= maxPrice &&
+        (!stockOnly || p.inStock),
+    )
+    .sort((a, b) => {
+      const rank = (product: Product) => {
+        const name = product.name.toLowerCase();
+        return name === term ? 0 : name.startsWith(term) ? 1 : name.includes(term) ? 2 : 3;
+      };
+      return term ? rank(a) - rank(b) : 0;
+    });
 }
 
 products.push(

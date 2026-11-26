@@ -1,3 +1,5 @@
+import { useDebouncedSearch } from "@/hooks/use-debounced-search";
+import { SectionLoading } from "./section-loading";
 import { SocialLinks } from "./social-links";
 import { ProductPurchase } from "./product-purchase";
 import { useRef, useState } from "react";
@@ -122,6 +124,7 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
   const shop = useCommerce();
   const isMobile = useIsMobile();
   const [query, setQuery] = useState("");
+  const searchQuery = useDebouncedSearch(query);
   const [category, setCategory] = useState("All");
   const [sort, setSort] = useState("featured");
   const [maxPrice, setMaxPrice] = useState(100000);
@@ -135,21 +138,26 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
   const [slide, setSlide] = useState(design === "studio" ? 2 : 0);
   const activeSlide = slides[slide] ?? slides[0]!;
   const filtering =
-    showAll || !!query.trim() || category !== "All" || dealsOnly || maxPrice < 100000 || stockOnly;
+    showAll ||
+    !!searchQuery.trim() ||
+    category !== "All" ||
+    dealsOnly ||
+    maxPrice < 100000 ||
+    stockOnly;
   const [remote, setRemote] = useState(shop.catalog);
   const [page, setPage] = useState(0);
   const [more, setMore] = useState(false);
   const [searching, setSearching] = useState(false);
   useEffect(() => {
     setPage(0);
-  }, [query, category, maxPrice, stockOnly, dealsOnly, sort]);
+  }, [searchQuery, category, maxPrice, stockOnly, dealsOnly, sort]);
   useEffect(() => {
-    if (!shop.backendEnabled || !filtering) return;
+    if (!shop.backendEnabled) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       setSearching(true);
       const params = new URLSearchParams({
-        q: query,
+        q: searchQuery,
         category,
         max: maxPrice === 100000 ? "" : String(maxPrice * 100),
         stock: stockOnly ? "1" : "0",
@@ -171,18 +179,14 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
         .finally(() => {
           if (!controller.signal.aborted) setSearching(false);
         });
-    }, 300);
+    }, 0);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, category, maxPrice, stockOnly, dealsOnly, sort, page, filtering, shop.backendEnabled]);
-  const filtered = (
-    shop.backendEnabled
-      ? filtering
-        ? remote
-        : shop.catalog.slice(0, 24)
-      : filterProducts(query, category, maxPrice, stockOnly)
+  }, [searchQuery, category, maxPrice, stockOnly, dealsOnly, sort, page, shop.backendEnabled]);
+  const matches = (
+    shop.backendEnabled ? remote : filterProducts(searchQuery, category, maxPrice, stockOnly)
   )
     .filter((p) => !dealsOnly || p.deal)
     .sort((a, b) =>
@@ -194,6 +198,8 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
             ? a.name.localeCompare(b.name)
             : 0,
     );
+  const filtered = shop.backendEnabled ? matches : matches.slice(page * 20, page * 20 + 20);
+  const hasMore = shop.backendEnabled ? more : matches.length > (page + 1) * 20;
   const goShop = () => document.getElementById("shop")?.scrollIntoView({ behavior: "smooth" });
   const choose = (value: string) => {
     setCategory(value);
@@ -302,6 +308,19 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
           setSuggestionsOpen(true);
         }}
       />
+      {query && (
+        <button
+          type="button"
+          aria-label="Clear search"
+          onClick={() => {
+            setQuery("");
+            setPage(0);
+            setSuggestionsOpen(false);
+          }}
+        >
+          <X size={18} />
+        </button>
+      )}
       <button aria-label="Search catalog" type="submit">
         <Search size={21} />
       </button>
@@ -920,14 +939,10 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
               {query.trim() ? ` matching “${query.trim()}”` : ""}
             </p>
           )}
-          {searching && (
-            <p role="status" className="my-3 text-sm">
-              Finding products…
-            </p>
-          )}
+          {searching && <SectionLoading label="Finding products" compact />}
           {filtered.length ? (
             <div className="retail-product-grid">
-              {(filtering ? filtered : filtered.slice(0, 5)).map((p) => (
+              {filtered.map((p) => (
                 <RetailProductCard key={p.id} product={p} />
               ))}
             </div>
@@ -941,13 +956,13 @@ export function PharmacyStorefront({ design }: { design: StoreDesign }) {
               </Button>
             </div>
           )}
-          {shop.backendEnabled && filtering && (
+          {(page > 0 || hasMore) && (
             <div className="mt-6 flex justify-center gap-6">
               <button disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
                 Previous
               </button>
               <span>Page {page + 1}</span>
-              <button disabled={!more} onClick={() => setPage((p) => p + 1)}>
+              <button disabled={!hasMore} onClick={() => setPage((p) => p + 1)}>
                 Next
               </button>
             </div>
