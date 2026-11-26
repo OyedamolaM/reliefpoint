@@ -26,12 +26,29 @@ export const receiptSchema = z.object({
   processing: money,
   total: money,
   method: z.string(),
+  payments: z.array(z.object({ method: z.string(), amount: money })).optional(),
   currency: z.literal("NGN"),
   test_mode: z.boolean(),
 });
 export type Receipt = z.infer<typeof receiptSchema>;
+// Display aliases do not rewrite the immutable receipt or gateway reference.
+export function receiptNumbers<T extends { number: string; reference: string }>(
+  receipt: T,
+  publicReference?: string,
+): T {
+  return publicReference
+    ? { ...receipt, number: publicReference.replace(/^RP-/, "RCP-"), reference: publicReference }
+    : receipt;
+}
 export const paymentMethodLabel = (method: string) =>
-  ({ cash: "Cash", bank_transfer: "Bank transfer", paystack: "Paystack" })[method] ?? "Payment";
+  ({
+    cash: "Cash",
+    bank_transfer: "Bank transfer",
+    card: "Card / POS",
+    other: "Other",
+    mixed: "Split payment",
+    paystack: "Paystack",
+  })[method] ?? "Payment";
 export const trackingLabel = (status: string) =>
   ({
     awaiting_payment: "Awaiting payment",

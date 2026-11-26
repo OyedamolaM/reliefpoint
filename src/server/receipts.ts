@@ -1,12 +1,19 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { receiptSchema, paymentMethodLabel, receiptDate, type Receipt } from "@/lib/receipt";
+import {
+  receiptSchema,
+  paymentMethodLabel,
+  receiptDate,
+  type Receipt,
+  receiptNumbers,
+} from "@/lib/receipt";
 import { requireDb, AppError } from "./errors";
 import { accessibleOrder } from "./customer";
 import { requireStaff, type Context } from "./session";
 
 export async function readReceipt(ctx: Context, id: string, token?: string, admin = false) {
+  let order;
   if (admin) await requireStaff(ctx, ["owner", "admin", "pharmacist", "fulfillment", "support"]);
-  else await accessibleOrder(ctx, id, token);
+  else order = await accessibleOrder(ctx, id, token);
   const row = requireDb(
     await ctx.db.from("receipts").select("document").eq("order_id", id).maybeSingle(),
   );
@@ -17,7 +24,8 @@ export async function readReceipt(ctx: Context, id: string, token?: string, admi
       "Your receipt isn’t available yet. Please try again shortly.",
       503,
     );
-  return parsed.data;
+  order ??= requireDb(await ctx.db.from("orders").select("public_reference").eq("id", id).single());
+  return receiptNumbers(parsed.data, order.public_reference);
 }
 
 // PDF generation stays on the server and uses the immutable payment snapshot.
@@ -74,6 +82,10 @@ export async function receiptPdf(receipt: Receipt): Promise<Uint8Array> {
   line(`Order: ${receipt.reference}`);
   line(`Paid: ${receiptDate(receipt.paid_at)} (WAT)`);
   line(`Payment method: ${paymentMethodLabel(receipt.method)}`);
+  if (receipt.payments && receipt.payments.length > 1) {
+    for (const part of receipt.payments)
+      line(`${paymentMethodLabel(part.method)}: NGN ${(part.amount / 100).toFixed(2)}`);
+  }
   y -= 10;
   line("Billed to", true, 12);
   for (const value of Object.values(receipt.customer)) line(value);

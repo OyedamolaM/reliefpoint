@@ -67,6 +67,181 @@ async function begin(request: string, quantity = 1) {
   ).rows[0]!.o;
 }
 describe("database migrations and pharmacy transactions", () => {
+  it("prepares paid non-prescription orders automatically and uses short public receipt numbers", async () => {
+    await db.exec("begin");
+    try {
+      await db.query("update products set prescription=false where id=$1", [product]);
+      const order = (
+        await db.query<{ o: any }>("select create_admin_order($1,$2::jsonb,$3,$4) o", [
+          owner,
+          JSON.stringify(input(crypto.randomUUID())),
+          "a".repeat(64),
+          "b".repeat(64),
+        ])
+      ).rows[0]!.o;
+      expect(order.public_reference).toMatch(/^RP-[0-9]{6,}$/);
+      const proof = crypto.randomUUID();
+      await db.query(
+        "insert into payment_evidence(id,order_id,actor,path) values($1,$2,$3,'private/photo.webp')",
+        [proof, order.id, owner],
+      );
+      await db.exec("savepoint wrong_evidence");
+      await expect(
+        db.query("select record_manual_payment_parts($1,$2,$3,$4::jsonb,'')", [
+          owner,
+          order.id,
+          crypto.randomUUID(),
+          JSON.stringify([{ method: "card", amount: 240000, evidence_id: crypto.randomUUID() }]),
+        ]),
+      ).rejects.toThrow("PAYMENT_EVIDENCE_INVALID");
+      await db.exec("rollback to savepoint wrong_evidence");
+      const paid = (
+        await db.query<{ o: any }>("select record_manual_payment_parts($1,$2,$3,$4::jsonb,'') o", [
+          owner,
+          order.id,
+          crypto.randomUUID(),
+          JSON.stringify([{ method: "card", amount: 240000, evidence_id: proof }]),
+        ])
+      ).rows[0]!.o;
+      expect(paid).toMatchObject({
+        fulfillment_status: "processing",
+        payment_status: "paid",
+        reference: order.reference,
+      });
+      const receipt = (
+        await db.query<{ document: any }>("select document from receipts where order_id=$1", [
+          order.id,
+        ])
+      ).rows[0]!.document;
+      expect(receipt.reference).toBe(order.public_reference);
+      expect(receipt.number).toBe(order.public_reference.replace("RP-", "RCP-"));
+      expect(JSON.stringify(receipt)).not.toContain(proof);
+      expect(
+        (await db.query("select admin_order_records('orders',$1) result", [order.public_reference]))
+          .rows[0],
+      ).toHaveProperty("result");
+      await db.exec("savepoint evidence_private;set local role authenticated");
+      await expect(db.query("select * from payment_evidence")).rejects.toThrow();
+      await db.exec("rollback to savepoint evidence_private");
+    } finally {
+      await db.exec("rollback");
+    }
+  });
+
+  it("records split collections atomically, verifies totals and preserves prescription holds and receipt amounts", async () => {
+    await db.exec("begin");
+    try {
+      const create = async () =>
+        (
+          await db.query<{ o: any }>("select create_admin_order($1,$2::jsonb,$3,$4) o", [
+            owner,
+            JSON.stringify(input(crypto.randomUUID())),
+            "a".repeat(64),
+            crypto.randomUUID().replaceAll("-", "").repeat(2),
+          ])
+        ).rows[0]!.o;
+      const o = await create(),
+        request = crypto.randomUUID();
+      const parts = [
+        { method: "cash", amount: 100000, reference: "" },
+        { method: "bank_transfer", amount: 140000, reference: "SPLIT-001" },
+      ];
+      await db.exec("savepoint split_total");
+      await expect(
+        db.query("select record_manual_payment_parts($1,$2,$3,$4::jsonb,'')", [
+          owner,
+          o.id,
+          request,
+          JSON.stringify([{ method: "cash", amount: 100 }]),
+        ]),
+      ).rejects.toThrow("MANUAL_PAYMENT_TOTAL");
+      await db.exec("rollback to savepoint split_total");
+      expect(
+        (await db.query("select id from manual_payments where order_id=$1", [o.id])).rows,
+      ).toHaveLength(0);
+      const pay = () =>
+        db.query<{ o: any }>("select record_manual_payment_parts($1,$2,$3,$4::jsonb,'') o", [
+          owner,
+          o.id,
+          request,
+          JSON.stringify(parts),
+        ]);
+      expect((await pay()).rows[0]!.o).toMatchObject({
+        payment_status: "paid",
+        payment_method: "mixed",
+        fulfillment_status: "prescription_review",
+      });
+      await pay();
+      expect(
+        (
+          await db.query(
+            "select * from manual_payment_parts where payment_id=(select id from manual_payments where order_id=$1)",
+            [o.id],
+          )
+        ).rows,
+      ).toHaveLength(2);
+      const document = (
+        await db.query<{ document: any }>("select document from receipts where order_id=$1", [o.id])
+      ).rows[0]!.document;
+      expect(document).toMatchObject({
+        method: "mixed",
+        payments: [
+          { method: "cash", amount: 100000 },
+          { method: "bank_transfer", amount: 140000 },
+        ],
+      });
+      expect(JSON.stringify(document)).not.toContain("SPLIT-001");
+      await db.exec("savepoint split_conflict");
+      await expect(
+        db.query("select record_manual_payment_parts($1,$2,$3,$4::jsonb,'')", [
+          owner,
+          o.id,
+          request,
+          JSON.stringify([{ method: "cash", amount: 240000 }]),
+        ]),
+      ).rejects.toThrow("PAYMENT_RECORD_CONFLICT");
+      await db.exec("rollback to savepoint split_conflict");
+      const otherOrder = await create();
+      await db.exec("savepoint split_duplicate");
+      await expect(
+        db.query("select record_manual_payment_parts($1,$2,$3,$4::jsonb,'')", [
+          owner,
+          otherOrder.id,
+          crypto.randomUUID(),
+          JSON.stringify(parts),
+        ]),
+      ).rejects.toThrow();
+      await db.exec("rollback to savepoint split_duplicate");
+      expect(
+        (await db.query("select id from manual_payments where order_id=$1", [otherOrder.id])).rows,
+      ).toHaveLength(0);
+      await db.query("select record_manual_payment_parts($1,$2,$3,$4::jsonb,'')", [
+        owner,
+        otherOrder.id,
+        crypto.randomUUID(),
+        JSON.stringify([
+          { method: "card", amount: 100000 },
+          { method: "other", amount: 140000 },
+        ]),
+      ]);
+      await db.exec("savepoint split_forbidden");
+      await expect(
+        db.query("select record_manual_payment_parts($1,$2,$3,$4::jsonb,'')", [
+          pharmacist,
+          o.id,
+          crypto.randomUUID(),
+          JSON.stringify(parts),
+        ]),
+      ).rejects.toThrow("FORBIDDEN");
+      await db.exec("rollback to savepoint split_forbidden");
+      await db.exec("savepoint split_private; set local role authenticated");
+      await expect(db.query("select * from manual_payment_parts")).rejects.toThrow();
+      await db.exec("rollback to savepoint split_private");
+    } finally {
+      await db.exec("rollback");
+    }
+  });
+
   it("does not create pickup automatically and enforces free collection and its tracking sequence", async () => {
     expect(
       (await db.query("select id from shipping_zones where fulfillment_method='pickup'")).rows,
@@ -351,7 +526,7 @@ describe("database migrations and pharmacy transactions", () => {
           o.id,
           receipt,
         ]),
-      ).rejects.toThrow("MANUAL_PAYMENT_INVALID");
+      ).rejects.toThrow("MANUAL_PAYMENT_TOTAL");
       await db.exec("rollback to savepoint wrong_amount");
       const pay = () =>
         db.query<{ o: any }>(
@@ -992,6 +1167,33 @@ describe("database migrations and pharmacy transactions", () => {
         ])
       ).rows[0]!.reviewed_at,
     ).toBeTruthy();
+  });
+});
+describe("ranked partial catalog search", () => {
+  it("matches partial names, categories and ingredients, ranks names first and paginates by twenty", async () => {
+    await db.exec(`insert into products(name,slug,category,detail,price_kobo,image,image_alt,directions,storage,active)
+      values ('Paracetamol Search','search-name','Pain relief','500mg',100,'photo','Photo','','',true),
+             ('Generic Search','search-ingredient','Pain relief','Contains paracetamol',100,'photo','Photo','','',true);
+      insert into products(name,slug,category,price_kobo,image,image_alt,directions,storage,active)
+      select 'Page item '||n,'search-page-'||n,'Search pages',100,'photo','Photo','','',true from generate_series(1,25) n;`);
+    const names = (
+      await db.query<{ name: string }>("select name from search_catalog('parace')")
+    ).rows.map((row) => row.name);
+    expect(names).toEqual(["Paracetamol Search", "Generic Search"]);
+    expect((await db.query("select id from search_catalog('pain')")).rows).toHaveLength(2);
+    const first = (
+      await db.query<{ id: string }>(
+        "select id from search_catalog('page', 'All', null, false, false, 'featured', 0)",
+      )
+    ).rows;
+    const next = (
+      await db.query<{ id: string }>(
+        "select id from search_catalog('page', 'All', null, false, false, 'featured', 1)",
+      )
+    ).rows;
+    expect(first).toHaveLength(21);
+    expect(next).toHaveLength(5);
+    expect(next.some((row) => first.slice(0, 20).some((item) => item.id === row.id))).toBe(false);
   });
 });
 describe("payment, content and upload boundaries", () => {

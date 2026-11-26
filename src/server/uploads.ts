@@ -15,24 +15,43 @@ export function detectFile(bytes: Uint8Array) {
 export async function uploadTicket(ctx: Context, body: unknown) {
   const input = z
     .object({
-      kind: z.enum(["media", "prescription"]),
+      kind: z.enum(["media", "prescription", "payment"]),
       size: z.number().int().positive().max(10485760),
       mime: z.enum(["application/pdf", "image/jpeg", "image/png"]),
       order_id: z.string().uuid().optional(),
     })
     .parse(body);
   const staff =
-    input.kind === "media"
-      ? await requireStaff(ctx, ["owner", "admin", "editor", "pharmacist"])
+    input.kind === "media" || input.kind === "payment"
+      ? await requireStaff(
+          ctx,
+          input.kind === "payment"
+            ? ["owner", "admin"]
+            : ["owner", "admin", "editor", "pharmacist"],
+        )
       : null;
   await rate(ctx, "upload-ticket", staff ? 60 : 5, 600, staff?.id ?? ctx.guestHash);
   await rate(ctx, "upload-ip", staff ? 120 : 30, 600);
   if (
-    (input.kind === "media" && input.mime === "application/pdf") ||
+    (input.kind !== "prescription" && input.mime === "application/pdf") ||
     (input.kind === "prescription" && input.size > 5242880)
   )
     throw new AppError("FILE_INVALID", "Choose a supported file within the upload limit.");
   if (input.kind === "prescription") await ownedOrder(ctx, input.order_id ?? "");
+  if (input.kind === "payment") {
+    const order = requireDb(
+      await ctx.db
+        .from("orders")
+        .select("created_by,payment_status")
+        .eq("id", z.string().uuid().parse(input.order_id))
+        .single(),
+    );
+    if (!order.created_by || order.payment_status !== "pending")
+      throw new AppError(
+        "UPLOAD_UNAVAILABLE",
+        "Payment photos can be added before confirming this payment.",
+      );
+  }
   const path = randomUUID();
   const ticket = requireDb(
     await ctx.db
@@ -60,8 +79,13 @@ export async function finalizeUpload(ctx: Context, body: unknown) {
   if (!ticket)
     throw new AppError("UPLOAD_EXPIRED", "This upload has expired. Please select your file again.");
   const staff =
-    ticket.kind === "media"
-      ? await requireStaff(ctx, ["owner", "admin", "editor", "pharmacist"])
+    ticket.kind === "media" || ticket.kind === "payment"
+      ? await requireStaff(
+          ctx,
+          ticket.kind === "payment"
+            ? ["owner", "admin"]
+            : ["owner", "admin", "editor", "pharmacist"],
+        )
       : null;
   if (ticket.owner_key !== (staff?.id ?? ctx.guestHash))
     throw new AppError("FORBIDDEN", "This upload isn’t available.", 403);
@@ -108,24 +132,55 @@ export async function finalizeUpload(ctx: Context, body: unknown) {
 }
 async function upload(ctx: Context, kind: string) {
   const staff =
-    kind === "media" ? await requireStaff(ctx, ["owner", "admin", "editor", "pharmacist"]) : null;
+    kind === "media" || kind === "payment"
+      ? await requireStaff(
+          ctx,
+          kind === "payment" ? ["owner", "admin"] : ["owner", "admin", "editor", "pharmacist"],
+        )
+      : null;
   await rate(ctx, "upload", staff ? 60 : 5, 600, staff?.id ?? ctx.guestHash);
   const form = await ctx.request.formData();
   const file = form.get("file");
   if (
     !(file instanceof File) ||
     !file.size ||
-    file.size > (kind === "media" ? 10 : 5) * 1024 * 1024
+    file.size > (kind === "prescription" ? 5 : 10) * 1024 * 1024
   )
-    throw new AppError("FILE_SIZE", `Choose a file up to ${kind === "media" ? 10 : 5} MB.`);
+    throw new AppError("FILE_SIZE", `Choose a file up to ${kind === "prescription" ? 5 : 10} MB.`);
   const bytes = Buffer.from(await file.arrayBuffer());
   const mime = detectFile(bytes);
-  if (!mime || (kind === "media" && mime === "application/pdf"))
+  if (!mime || (kind !== "prescription" && mime === "application/pdf"))
     throw new AppError(
       "FILE_TYPE",
       kind === "media" ? "Choose a JPEG or PNG photo." : "Choose a PDF, JPEG or PNG prescription.",
     );
   const db = ctx.db;
+  if (kind === "payment") {
+    const orderId = z.string().uuid().parse(form.get("order_id"));
+    const order = requireDb(
+      await db.from("orders").select("created_by,payment_status").eq("id", orderId).single(),
+    );
+    if (!order.created_by || order.payment_status !== "pending")
+      throw new AppError("UPLOAD_UNAVAILABLE", "This payment can’t receive photos now.");
+    const image = await compressPaymentPhoto(bytes);
+    const path = `${orderId}/${randomUUID()}.webp`;
+    checkDb(
+      await db.storage
+        .from("payment-evidence")
+        .upload(path, image, { contentType: "image/webp", upsert: false }),
+    );
+    const result = await db
+      .from("payment_evidence")
+      .insert({ order_id: orderId, actor: staff!.id, path })
+      .select("id")
+      .single();
+    if (result.error) {
+      await db.storage.from("payment-evidence").remove([path]);
+      checkDb(result);
+    }
+    await audit(ctx, staff!.id, "payment_photo_uploaded", "orders", orderId);
+    return { id: requireDb(result).id };
+  }
   if (kind === "prescription") {
     const order = await ownedOrder(ctx, String(form.get("order_id")));
     if (
@@ -182,6 +237,37 @@ async function upload(ctx: Context, kind: string) {
   }
   await audit(ctx, staff!.id, "upload", "media", key);
   return { images };
+}
+export async function compressPaymentPhoto(bytes: Uint8Array) {
+  try {
+    const image = await sharp(bytes, { limitInputPixels: 24000000 })
+      .rotate()
+      .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 78 })
+      .toBuffer();
+    if (image.length > 3145728) throw new Error("size");
+    return image;
+  } catch {
+    throw new AppError(
+      "PHOTO_INVALID",
+      "We couldn’t read that photo. Please choose another JPEG or PNG.",
+    );
+  }
+}
+export async function paymentEvidenceLink(ctx: Context, id: string) {
+  const actor = await requireStaff(ctx, ["owner", "admin"]);
+  const record = requireDb(
+    await ctx.db
+      .from("payment_evidence")
+      .select("path,order_id")
+      .eq("id", z.string().uuid().parse(id))
+      .single(),
+  );
+  const file = requireDb(
+    await ctx.db.storage.from("payment-evidence").createSignedUrl(record.path, 60),
+  );
+  await audit(ctx, actor.id, "payment_photo_viewed", "orders", record.order_id);
+  return { url: file.signedUrl };
 }
 export function assertMedia(url: string) {
   const parsed = new URL(url);

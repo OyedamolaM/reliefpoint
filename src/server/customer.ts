@@ -1,3 +1,4 @@
+import { receiptNumbers } from "@/lib/receipt";
 import { z } from "zod";
 import { verifiedPaymentStatuses, unverifiedPaymentStatuses } from "@/lib/order-groups";
 import { randomBytes } from "node:crypto";
@@ -64,9 +65,12 @@ export async function orderDetails(ctx: Context, id: string, trackingToken?: str
   const { guest_hash: _g, fee_snapshot: _f, authorization_url: _a, ...safe } = order;
   return {
     order: safe,
-    receipt:
-      checkDb(await ctx.db.from("receipts").select("document").eq("order_id", id).maybeSingle())
-        ?.document ?? null,
+    receipt: await (async () => {
+      const row = checkDb(
+        await ctx.db.from("receipts").select("document").eq("order_id", id).maybeSingle(),
+      );
+      return row?.document ? receiptNumbers(row.document, order.public_reference) : null;
+    })(),
     items,
     events,
     prescriptions,
@@ -92,7 +96,10 @@ export async function customerAction(ctx: Context, action: string, body: unknown
       await db
         .from("orders")
         .select("id,contact")
-        .eq("reference", input.reference)
+        .eq(
+          /^RP-\d{6,16}$/.test(input.reference.trim()) ? "public_reference" : "reference",
+          input.reference.trim(),
+        )
         .ilike("contact->>email", input.email.replace(/[%_]/g, "\\$&"))
         .maybeSingle(),
     );
@@ -186,7 +193,7 @@ export async function customerData(ctx: Context, kind: string, params: URLSearch
       await db
         .from("orders")
         .select(
-          "id,reference,payment_status,fulfillment_status,prescription_status,total,created_at",
+          "id,reference,public_reference,payment_status,fulfillment_status,prescription_status,total,created_at",
         )
         .eq("user_id", user.id)
         .in(

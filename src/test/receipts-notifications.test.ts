@@ -41,7 +41,11 @@ const receipt: Receipt = {
   currency: "NGN",
   test_mode: false,
 };
-function context(message?: OutboxMessage, validGuestLink = false) {
+function context(
+  message?: OutboxMessage,
+  validGuestLink = false,
+  orderPatch: Record<string, unknown> = {},
+) {
   const writes: { table: string; value: any }[] = [],
     reads: string[] = [];
   const ctx = {
@@ -62,6 +66,7 @@ function context(message?: OutboxMessage, validGuestLink = false) {
                 contact: receipt.customer,
                 needs_prescription: true,
                 prescription_status: "pending",
+                ...orderPatch,
               }
             : table === "receipts"
               ? { document: receipt }
@@ -173,6 +178,29 @@ it("attaches the receipt, escapes customer content and reuses private links on r
   expect(
     JSON.stringify(writes.filter((write) => write.table === "notification_outbox")),
   ).not.toContain(rawToken);
+});
+
+it("uses short numbers in the confirmation email and explains that the paid order is being prepared", async () => {
+  const { ctx } = context(undefined, false, {
+    public_reference: "RP-100123",
+    needs_prescription: false,
+    prescription_status: "not_required",
+    fulfillment_status: "processing",
+  });
+  const mail = await prepareNotification(ctx, {
+    id,
+    email: "amina@example.com",
+    subject: "Payment received",
+    body: "Paid",
+    kind: "receipt",
+    order_id: id,
+  });
+  expect(mail.textContent).toContain("preparing your order");
+  expect(mail.textContent).toContain("RP-100123");
+  expect(mail.textContent).toContain("RCP-100123");
+  expect(mail.attachment?.[0]?.name).toBe("ReliefPoint-RP-100123.pdf");
+  const pdf = await PDFDocument.load(Buffer.from(mail.attachment![0]!.content, "base64"));
+  expect(pdf.getTitle()).toBe("Receipt RCP-100123");
 });
 
 it("uses the saved delivery event in emails, omits private notes and preserves text fallback", async () => {

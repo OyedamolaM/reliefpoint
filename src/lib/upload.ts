@@ -1,20 +1,26 @@
 import { api, send, ClientError } from "./api";
 export async function uploadFile<T>(
-  kind: "media" | "prescription",
+  kind: "media" | "prescription" | "payment",
   file: File,
   orderId?: string,
   trackingToken?: string,
 ): Promise<T> {
-  const limit = (kind === "media" ? 10 : 5) * 1024 * 1024;
+  const limit = (kind === "prescription" ? 5 : 10) * 1024 * 1024;
   if (!file.size || file.size > limit)
-    throw new ClientError(`Choose a file up to ${kind === "media" ? 10 : 5} MB.`, "FILE_SIZE", 400);
+    throw new ClientError(
+      `Choose a file up to ${kind === "prescription" ? 5 : 10} MB.`,
+      "FILE_SIZE",
+      400,
+    );
   if (
     !["image/jpeg", "image/png", ...(kind === "prescription" ? ["application/pdf"] : [])].includes(
       file.type,
     )
   )
     throw new ClientError(
-      kind === "media" ? "Choose a JPEG or PNG photo." : "Choose a PDF, JPEG or PNG prescription.",
+      kind !== "prescription"
+        ? "Choose a JPEG or PNG photo."
+        : "Choose a PDF, JPEG or PNG prescription.",
       "FILE_TYPE",
       400,
     );

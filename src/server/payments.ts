@@ -114,6 +114,7 @@ export async function beginCheckout(ctx: Context, input: unknown) {
     order: {
       id: order.id,
       reference: order.reference,
+      public_reference: order.public_reference,
       needs_prescription: order.needs_prescription,
     },
     quote: {

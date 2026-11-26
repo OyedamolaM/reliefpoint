@@ -56,6 +56,28 @@ async function readCatalog(params: URLSearchParams) {
     };
   const page = Math.max(0, Math.min(10000, Number(params.get("page")) || 0));
   const sort = params.get("sort");
+  const search = params.get("q")?.trim().slice(0, 100);
+  if (search) {
+    const rows = requireDb(
+      await database().rpc("search_catalog", {
+        p_query: search,
+        p_category: params.get("category") || "All",
+        p_max: params.get("max")
+          ? z.coerce.number().min(0).max(100000000).parse(params.get("max"))
+          : null,
+        p_stock: params.get("stock") === "1",
+        p_deals: params.get("deals") === "1",
+        p_sort: sort || "featured",
+        p_page: page,
+      }),
+    ) as CatalogRow[];
+    return {
+      products: rows.slice(0, 20).map(toProduct),
+      configured: true,
+      page,
+      more: rows.length > 20,
+    };
+  }
   const rows = await selectCatalog(
     "id,name,slug,detail,category,price_kobo,regular_price_kobo,image,image_alt,prescription,deal,available",
     async (columns) => {
@@ -80,19 +102,21 @@ async function readCatalog(params: URLSearchParams) {
       return await query
         .returns<CatalogRow[]>()
         .order("id")
-        .range(page * 24, page * 24 + 24);
+        .range(page * 20, page * 20 + 20);
     },
   );
   return {
-    products: rows.slice(0, 24).map(toProduct),
+    products: rows.slice(0, 20).map(toProduct),
     configured: true,
     page,
-    more: rows.length > 24,
+    more: rows.length > 20,
   };
 }
-export const publicContent = (kind: string, slug?: string) =>
-  cachedPublic(`content:${kind}:${slug ?? ""}`, () => readContent(kind, slug));
-async function readContent(kind: string, slug?: string) {
+export const publicContent = (kind: string, slug?: string, category = "") =>
+  cachedPublic(`content:${kind}:${slug ?? ""}:${category}`, () =>
+    readContent(kind, slug, category),
+  );
+async function readContent(kind: string, slug?: string, category = "") {
   if (!configured())
     return kind === "posts"
       ? { posts: [], more: false }
@@ -141,18 +165,24 @@ async function readContent(kind: string, slug?: string) {
       .min(0)
       .max(10000)
       .parse(slug ?? 0);
+    let postQuery = db
+      .from("blog_posts")
+      .select("id,title,slug,summary,category,cover,cover_alt,author_name,published_at,updated_at");
+    const categories = requireDb(
+      await db.from("blog_posts").select("category").eq("status", "published").order("category"),
+    );
+    const categoryNames = [
+      ...new Set(categories.map((row) => String(row.category)).filter(Boolean)),
+    ];
+    if (category) postQuery = postQuery.eq("category", category.slice(0, 100));
     const rows = requireDb(
-      await db
-        .from("blog_posts")
-        .select(
-          "id,title,slug,summary,category,cover,cover_alt,author_name,published_at,updated_at",
-        )
+      await postQuery
         .eq("status", "published")
         .order("published_at", { ascending: false })
         .order("id")
         .range(page * 12, page * 12 + 12),
     );
-    return { posts: rows.slice(0, 12), more: rows.length > 12 };
+    return { posts: rows.slice(0, 12), more: rows.length > 12, categories: categoryNames };
   }
   if (!slug || slug.length > 200)
     throw new AppError("NOT_FOUND", "This page couldn’t be found.", 404);

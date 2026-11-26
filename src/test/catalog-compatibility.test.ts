@@ -86,7 +86,7 @@ describe("catalog migration compatibility", () => {
     expect(result.products[0]).toMatchObject({ id: "product", price: 1500, live: true });
     expect(result.products[0]).not.toHaveProperty("originalPrice");
     expect(state.calls.filter(([method]) => method === "select")).toHaveLength(2);
-    expect(state.calls).toContainEqual(["range", 24, 48]);
+    expect(state.calls).toContainEqual(["range", 20, 40]);
     expect(state.calls.filter((call) => call[0] === "eq" && call[1] === "active")).toHaveLength(2);
     expect(state.calls.filter((call) => call[0] === "lte")).toEqual([
       ["lte", "price_kobo", 200000],

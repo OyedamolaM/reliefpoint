@@ -1,4 +1,4 @@
-import { receiptSchema, receiptDate, trackingLabel } from "@/lib/receipt";
+import { receiptSchema, receiptNumbers, receiptDate, trackingLabel } from "@/lib/receipt";
 import { formatNaira } from "@/lib/commerce";
 import { checkDb, requireDb } from "./errors";
 import { receiptPdf } from "./receipts";
@@ -77,7 +77,7 @@ export async function prepareNotification(ctx: Context, message: OutboxMessage) 
       await ctx.db
         .from("orders")
         .select(
-          "id,reference,contact,fulfillment_status,prescription_status,needs_prescription,zone_snapshot",
+          "id,reference,public_reference,contact,fulfillment_status,prescription_status,needs_prescription,zone_snapshot",
         )
         .eq("id", message.order_id)
         .single(),
@@ -102,18 +102,20 @@ export async function prepareNotification(ctx: Context, message: OutboxMessage) 
     const url = `${ctx.origin}/orders/${order.id}?token=${token}`;
     email.trackingUrl = url;
     email.greeting = order.contact.name;
-    email.details = [["Order reference", order.reference]];
+    email.details = [["Order reference", order.public_reference ?? order.reference]];
     if (message.kind === "receipt") {
       const row = requireDb(
         await ctx.db.from("receipts").select("document").eq("order_id", order.id).single(),
       );
-      const receipt = receiptSchema.parse(row.document);
+      const receipt = receiptNumbers(receiptSchema.parse(row.document), order.public_reference);
       email.title = receipt.test_mode ? "Test payment confirmed" : "Payment received. Thank you!";
       email.paragraphs = [
         "Your payment has been confirmed. Your itemised receipt is attached as a PDF and is also available on your order page.",
         order.needs_prescription && order.prescription_status !== "approved"
           ? "Your order is on hold for pharmacist approval before dispatch."
-          : "We’ll email you when your delivery has an update.",
+          : order.fulfillment_status === "exception"
+            ? "Your payment is confirmed. Our team is checking availability before preparation."
+            : "We’re preparing your order. We’ll email you with updates.",
       ];
       email.details.push(
         ["Receipt number", receipt.number],

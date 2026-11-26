@@ -1,3 +1,4 @@
+import { receiptNumbers } from "@/lib/receipt";
 import { readReceipt, receiptPdf } from "./receipts";
 import { z } from "zod";
 import { timingSafeEqual } from "node:crypto";
@@ -31,7 +32,7 @@ import {
   quoteAdminOrder,
   recordManualPayment,
 } from "./admin";
-import { uploadTicket, finalizeUpload } from "./uploads";
+import { uploadTicket, finalizeUpload, paymentEvidenceLink } from "./uploads";
 import { runWorker } from "./worker";
 import { readBody } from "./body";
 
@@ -62,6 +63,7 @@ export async function handleApi(request: Request) {
       result = await publicContent(
         path,
         path === "posts" ? (url.searchParams.get("page") ?? "0") : undefined,
+        path === "posts" ? (url.searchParams.get("category") ?? "") : "",
       );
     else if (method === "GET" && /^(product|post)\//.test(path)) {
       const [kind, ...slug] = path.split("/");
@@ -152,7 +154,9 @@ export async function handleApi(request: Request) {
         ctx.headers.set("Content-Type", "application/pdf");
         ctx.headers.set(
           "Content-Disposition",
-          'attachment; filename="ReliefPoint-receipt-' + id + '.pdf"',
+          'attachment; filename="ReliefPoint-' +
+            receipt.number.replace(/[^a-zA-Z0-9-]/g, "") +
+            '.pdf"',
         );
         ctx.headers.set("Referrer-Policy", "no-referrer");
         return new Response(Buffer.from(bytes), { headers: ctx.headers });
@@ -186,6 +190,8 @@ export async function handleApi(request: Request) {
         result = await quoteAdminOrder(ctx, await body());
       } else if (path === "admin/manual-payment" && method === "POST") {
         result = await recordManualPayment(ctx, await body());
+      } else if (path.startsWith("admin/payment-evidence/") && method === "GET") {
+        result = await paymentEvidenceLink(ctx, path.slice("admin/payment-evidence/".length));
       } else if (path === "admin/record" && method === "GET") {
         result = await adminRecord(
           ctx,
@@ -208,10 +214,12 @@ export async function handleApi(request: Request) {
         const order = requireDb(await ctx.db.from("orders").select("*").eq("id", id).single());
         result = {
           order: { ...order, guest_hash: undefined },
-          receipt:
-            checkDb(
+          receipt: await (async () => {
+            const row = checkDb(
               await ctx.db.from("receipts").select("document").eq("order_id", id).maybeSingle(),
-            )?.document ?? null,
+            );
+            return row?.document ? receiptNumbers(row.document, order.public_reference) : null;
+          })(),
           staff_notes: requireDb(
             await ctx.db
               .from("order_staff_notes")
@@ -231,7 +239,9 @@ export async function handleApi(request: Request) {
             ? checkDb(
                 await ctx.db
                   .from("manual_payments")
-                  .select("method,amount,reference,note,created_at,actor")
+                  .select(
+                    "method,amount,reference,note,created_at,actor,parts:manual_payment_parts(method,amount,reference,position,evidence_id)",
+                  )
                   .eq("order_id", id)
                   .maybeSingle(),
               )

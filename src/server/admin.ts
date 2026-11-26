@@ -44,7 +44,12 @@ export async function createAdminOrder(ctx: Context, body: unknown) {
     }),
   );
   return {
-    order: { id: order.id, reference: order.reference, payment_status: order.payment_status },
+    order: {
+      id: order.id,
+      reference: order.reference,
+      public_reference: order.public_reference,
+      payment_status: order.payment_status,
+    },
     url: `${ctx.origin}/orders/${order.id}?token=${token}`,
     expires_at: order.link_expires_at,
     total: order.total,
@@ -68,21 +73,44 @@ export async function recordManualPayment(ctx: Context, body: unknown) {
     .object({
       id: z.string().uuid(),
       request_id: z.string().uuid(),
-      method: z.enum(["cash", "bank_transfer"]),
-      amount: z.number().int().positive().max(100000000000),
-      reference: z.string().trim().min(3).max(120),
+      method: z.enum(["cash", "bank_transfer", "card", "other"]).optional(),
+      amount: z.number().int().positive().max(100000000000).optional(),
+      reference: z.string().trim().max(120).default(""),
+      payments: z
+        .array(
+          z.object({
+            method: z.enum(["cash", "bank_transfer", "card", "other"]),
+            amount: z.number().int().positive().max(100000000000),
+            reference: z.string().trim().max(120).default(""),
+            evidence_id: z.string().uuid().nullable().optional(),
+          }),
+        )
+        .min(1)
+        .max(10)
+        .optional(),
       note: z.string().trim().max(1000).default(""),
     })
     .parse(body);
+  if (!input.payments && (!input.method || !input.amount))
+    throw new AppError("MANUAL_PAYMENT_INVALID", "Check the payment methods and amounts.");
   await rate(ctx, "manual-payment", 10, 60, actor.id);
   const order = requireDb(
-    await ctx.db.rpc("record_manual_payment", {
+    await ctx.db.rpc(input.payments ? "record_manual_payment_parts" : "record_manual_payment", {
       p_actor: actor.id,
       p_order: input.id,
       p_request: input.request_id,
-      p_method: input.method,
-      p_amount: input.amount,
-      p_reference: input.reference,
+      ...(input.payments
+        ? {
+            p_parts: input.payments.map((part) => ({
+              ...part,
+              reference: part.method === "cash" ? "" : part.reference,
+            })),
+          }
+        : {
+            p_method: input.method,
+            p_amount: input.amount,
+            p_reference: input.method === "cash" ? "" : input.reference,
+          }),
       p_note: input.note,
     }),
   );
@@ -304,7 +332,7 @@ async function saveCustomer(ctx: Context, body: unknown, invite: boolean) {
       phone: z
         .string()
         .trim()
-        .regex(/^(?:\+234|234|0)[789][01]\d{8}$/, "Enter a valid Nigerian phone number."),
+        .regex(/^(?:\+234|234|0)[789][01]\d{8}$/, "Enter a valid phone number."),
       address: z.string().trim().max(500).default(""),
       state: z.string().trim().max(80).default(""),
       lga: z.string().trim().max(120).default(""),

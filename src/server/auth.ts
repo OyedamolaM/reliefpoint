@@ -23,7 +23,7 @@ export async function authAction(ctx: Context, action: string, body: unknown) {
         );
       const phone = z
         .string()
-        .regex(/^(?:0|\+?234)[789][0-9]{9}$/, "Enter a valid Nigerian phone number.")
+        .regex(/^(?:0|\+?234)[789][0-9]{9}$/, "Enter a valid phone number.")
         .parse(input.phone);
       const { error } = await ctx.auth.auth.signUp({
         email: input.email,

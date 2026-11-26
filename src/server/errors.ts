@@ -37,7 +37,9 @@ export function checkDb<T>(result: { data: T; error: unknown }): T {
       FORBIDDEN: "You don’t have access to this action.",
       OWNER_REQUIRED: "Only the owner can change owner access.",
       MANUAL_ORDER_REQUIRED: "Manual payments are available only for staff-created orders.",
-      MANUAL_PAYMENT_INVALID: "Enter the full amount due and a receipt or transfer reference.",
+      MANUAL_PAYMENT_INVALID: "Check the payment methods and amounts.",
+      PAYMENT_EVIDENCE_INVALID: "Choose a payment photo uploaded for this order.",
+      MANUAL_PAYMENT_TOTAL: "The payment amounts must add up to the amount due.",
       PAYMENT_RECORD_CONFLICT:
         "This payment reference was already used with different details. Check the payment before retrying.",
       PAYMENT_ALREADY_RECEIVED:
