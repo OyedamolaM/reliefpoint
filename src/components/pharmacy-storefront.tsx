@@ -1,4 +1,5 @@
-﻿import { useRef, useState } from "react";
+import { ProductPurchase } from "./product-purchase";
+import { useRef, useState } from "react";
 import {
   Activity,
   BadgeCheck,
@@ -1314,10 +1315,7 @@ function RetailProductCard({ product: p }: { product: Product }) {
           <del className="text-sm text-slate-500">{formatNaira(p.originalPrice)}</del>
         )}
         {p.inStock ? (
-          <button className="product-add-button" onClick={() => shop.add(p)}>
-            <ShoppingBag size={16} />
-            Add to cart
-          </button>
+          <ProductPurchase product={p} onAdd={shop.add} />
         ) : (
           <a
             className="product-add-button unavailable"

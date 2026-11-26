@@ -72,7 +72,7 @@ describe("account basket isolation", () => {
         </CommerceProvider>
       </AuthProvider>,
     );
-    await waitFor(() => expect(screen.getByTestId("basket-count")).toHaveTextContent(/^2$/));
+    await waitFor(() => expect(screen.getByTestId("basket-count")).toHaveTextContent(/^1$/));
     current = userB;
     fireEvent.click(screen.getByText("Refresh account"));
     await waitFor(() => expect(screen.getByTestId("basket-count")).toHaveTextContent(/^0$/));

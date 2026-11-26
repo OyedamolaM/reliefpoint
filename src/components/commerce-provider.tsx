@@ -1,7 +1,7 @@
-﻿import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { QuantitySelector } from "./quantity-selector";
+import { ProductPurchase } from "./product-purchase";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import {
-  Minus,
-  Plus,
   Trash2,
   Upload,
   ShoppingBag,
@@ -122,7 +122,7 @@ export function CommerceProvider({
   const [consent, setConsent] = useState(false);
   const quote = totals(cart, state, lga);
   const needsPrescription = cart.some((item) => item.product.prescription);
-  const count = cart.reduce((n, item) => n + item.quantity, 0);
+  const count = cart.length;
   const basketKey = JSON.stringify(cart.map((i) => [i.product.id, i.quantity, i.product.price]));
   useEffect(() => {
     setDeliveryComplete(false);
@@ -323,6 +323,10 @@ export function CommerceProvider({
     setCartOpen(true);
   };
   const add = (p: Product, quantity = 1) => {
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) {
+      toast.error("Choose a quantity between 1 and 99.");
+      return;
+    }
     if (!p.inStock) {
       toast.info("This item is currently unavailable.");
       return;
@@ -444,13 +448,7 @@ export function CommerceProvider({
                       ? "Prescription required · pharmacist review"
                       : "Confirm availability with our team"}
                   </p>
-                  <Button
-                    onClick={() => add(product)}
-                    disabled={!product.inStock}
-                    className="w-full"
-                  >
-                    {product.inStock ? "Add to cart" : "Currently unavailable"}
-                  </Button>
+                  <ProductPurchase key={product.id} product={product} onAdd={add} />
                   <Button
                     variant="outline"
                     className="mt-2"
@@ -521,9 +519,7 @@ export function CommerceProvider({
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold">{p.name}</p>
                       <p className="my-2 text-sm">{formatNaira(p.price)}</p>
-                      <Button size="sm" disabled={!p.inStock} onClick={() => add(p)}>
-                        Add to cart
-                      </Button>
+                      <ProductPurchase product={p} onAdd={add} />
                     </div>
                     <Button
                       size="icon"
@@ -607,28 +603,12 @@ export function CommerceProvider({
                           {p.prescription && " · Prescription required"}
                         </p>
                         <div className="mt-3 flex items-center gap-2">
-                          <Button
-                            className="size-8"
-                            size="icon"
-                            variant="outline"
-                            aria-label={`Decrease ${p.name}`}
-                            onClick={() => changeQuantity(p.id, -1)}
-                          >
-                            <Minus className="size-3" />
-                          </Button>
-                          <span className="w-5 text-center text-sm" aria-live="polite">
-                            {quantity}
-                          </span>
-                          <Button
-                            className="size-8"
-                            size="icon"
-                            variant="outline"
-                            disabled={quantity >= 99}
-                            aria-label={`Increase ${p.name}`}
-                            onClick={() => changeQuantity(p.id, 1)}
-                          >
-                            <Plus className="size-3" />
-                          </Button>
+                          <QuantitySelector
+                            value={quantity}
+                            name={p.name}
+                            allowRemoval
+                            onChange={(next) => changeQuantity(p.id, next - quantity)}
+                          />
                           <Button
                             className="ml-auto size-8"
                             size="icon"

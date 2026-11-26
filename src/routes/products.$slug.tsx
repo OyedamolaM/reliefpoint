@@ -1,3 +1,4 @@
+import { ProductPurchase } from "@/components/product-purchase";
 import { createFileRoute, notFound, redirect, Link } from "@tanstack/react-router";
 import { loadContent } from "@/lib/public-data";
 import { pageMeta } from "@/lib/seo";
@@ -49,13 +50,7 @@ function Page() {
               Prescription required. Pharmacist approval before dispatch.
             </p>
           )}
-          <button
-            className="action-button"
-            disabled={!product.inStock}
-            onClick={() => shop.add(product)}
-          >
-            {product.inStock ? "Add to cart" : "Currently unavailable"}
-          </button>
+          <ProductPurchase key={product.id} product={product} onAdd={shop.add} />
           <button className="ml-4 underline" onClick={() => shop.toggleWishlist(product.id)}>
             Save to wishlist
           </button>

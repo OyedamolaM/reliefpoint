@@ -83,7 +83,7 @@ describe("frontend checkout", () => {
     fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(review);
     expect(screen.getByText(/no payment has been taken/)).toBeInTheDocument();
-    expect(screen.getByTestId("cart-count")).toHaveTextContent("2");
+    expect(screen.getByTestId("cart-count")).toHaveTextContent("1");
     expect(screen.getByText("Ask our team to confirm this basket")).toHaveAttribute(
       "href",
       expect.stringContaining("bank_transfer"),
