@@ -1,3 +1,4 @@
+import { useDebouncedSearch } from "@/hooks/use-debounced-search";
 import { SearchInput } from "./search-input";
 import { SectionLoading } from "./section-loading";
 import { useEffect, useState } from "react";
@@ -6,25 +7,18 @@ import { api } from "@/lib/api";
 import { formatNaira, type Product } from "@/lib/commerce";
 import type { CustomerChoice } from "./customer-form";
 import { WorkspaceModal } from "./workspace-shell";
-import { Field, Pagination, Retry } from "./account-page";
+import { Pagination, Retry } from "./account-page";
 import { Button } from "./ui/button";
 import { QuantitySelector } from "./quantity-selector";
 export type OrderItem = { product: Product; quantity: number };
 function usePickerSearch() {
   const [search, setSearch] = useState(""),
-    [query, setQuery] = useState(""),
     [page, setPage] = useState(0);
+  const query = useDebouncedSearch(search);
   useEffect(() => {
-    if (search.trim() === query) return;
-    const timer = setTimeout(
-      () => {
-        setQuery(search.trim());
-        setPage(0);
-      },
-      search.trim() ? 2000 : 0,
-    );
-    return () => clearTimeout(timer);
-  }, [search, query]);
+    setPage(0);
+  }, [query]);
+
   return { search, setSearch, query, page, setPage };
 }
 export function OrderCustomerPicker({

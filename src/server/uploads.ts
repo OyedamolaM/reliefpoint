@@ -152,7 +152,9 @@ async function upload(ctx: Context, kind: string) {
   if (!mime || (kind !== "prescription" && mime === "application/pdf"))
     throw new AppError(
       "FILE_TYPE",
-      kind === "media" ? "Choose a JPEG or PNG photo." : "Choose a PDF, JPEG or PNG prescription.",
+      kind !== "prescription"
+        ? "Choose a JPEG or PNG photo."
+        : "Choose a PDF, JPEG or PNG prescription.",
     );
   const db = ctx.db;
   if (kind === "payment") {

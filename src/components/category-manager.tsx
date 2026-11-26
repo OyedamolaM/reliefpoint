@@ -1,3 +1,4 @@
+import { useDebouncedSearch } from "@/hooks/use-debounced-search";
 import { SearchInput } from "./search-input";
 import { SectionLoading } from "./section-loading";
 import { WorkspaceModal } from "./workspace-shell";
@@ -22,23 +23,16 @@ export function CategoryManager({
   const [name, setName] = useState(row.name ?? "");
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState(false);
-  const [search, setSearch] = useState(""),
-    [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
   const [page, setPage] = useState(0),
     [memberPage, setMemberPage] = useState(0);
   const [selected, setSelected] = useState<Map<string, string>>(new Map());
   const [draftSelected, setDraftSelected] = useState<Map<string, string>>(new Map());
+  const query = useDebouncedSearch(search);
   useEffect(() => {
-    if (search.trim() === query) return;
-    const timer = setTimeout(
-      () => {
-        setQuery(search.trim());
-        setPage(0);
-      },
-      search.trim() ? 2000 : 0,
-    );
-    return () => clearTimeout(timer);
-  }, [search, query]);
+    setPage(0);
+  }, [query]);
+
   const members = useQuery({
     queryKey: ["private", "category-members", row.id, row.name, memberPage],
     queryFn: () =>
