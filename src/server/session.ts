@@ -188,7 +188,9 @@ export async function identity(ctx: Context, optional = false): Promise<Identity
     await ctx.auth.auth.signOut({ scope: "local" });
     throw new AppError("SESSION_EXPIRED", "Your session has expired. Please sign in again.", 401);
   }
-  if (Date.now() - Date.parse(record.last_seen) > 30000)
+  const backgroundRead =
+    ctx.request.method === "GET" && ctx.request.headers.get("X-Background-Read") === "1";
+  if (!backgroundRead && Date.now() - Date.parse(record.last_seen) > 30000)
     checkDb(
       await ctx.db
         .from("app_sessions")

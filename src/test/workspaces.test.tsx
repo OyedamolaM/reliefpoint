@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, screen, within, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, within, waitFor, act } from "@testing-library/react";
 import { render } from "./render";
 const state = vi.hoisted(() => ({
   user: {
@@ -385,6 +385,42 @@ describe("pharmacy workspaces", () => {
         "Find products",
       ),
     ).toBeInTheDocument();
+  });
+  it("discovers an order created elsewhere without a refresh button", async () => {
+    vi.useFakeTimers();
+    try {
+      render(<AdminPage />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      fireEvent.click(
+        within(screen.getByRole("navigation", { name: "Administration" })).getByRole("button", {
+          name: "Orders",
+        }),
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      state.createdOrder = {
+        id: "external-order",
+        reference: "RP-100999",
+        payment_status: "paid",
+        fulfillment_status: "processing",
+        prescription_status: "not_required",
+        total: 250000,
+        contact: { name: "External buyer" },
+        created_at: "2026-11-26T12:00:00Z",
+      };
+      expect(screen.queryByText("RP-100999")).not.toBeInTheDocument();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30000);
+      });
+      expect(screen.getByText("RP-100999")).toBeVisible();
+      expect(screen.queryByRole("button", { name: "Refresh" })).not.toBeInTheDocument();
+    } finally {
+      cleanup();
+      vi.useRealTimers();
+    }
   });
   it("keeps the chosen date filter across order tabs and submits customer or item search", async () => {
     render(<AdminPage />);

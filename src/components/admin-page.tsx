@@ -1,7 +1,7 @@
 import { useDebouncedSearch } from "@/hooks/use-debounced-search";
 import { SearchInput } from "./search-input";
 import { SectionLoading } from "./section-loading";
-import { invalidateOrderData } from "@/lib/order-updates";
+import { invalidateOrderData, orderReadOptions, orderRefreshInterval } from "@/lib/order-updates";
 import { receiptDate, trackingLabel } from "@/lib/receipt";
 import { customerWhatsApp, socialProfiles } from "@/lib/contact-links";
 import { CustomerForm as CustomerInvite } from "./customer-form";
@@ -281,13 +281,18 @@ export function AdminPage() {
     queryFn: () =>
       api<{ rows: any[]; more: boolean }>(
         `admin/${active === "pending_orders" ? "orders" : active}?page=${page}&q=${encodeURIComponent(query)}${active === "pending_orders" ? "&view=pending" : ""}${activeDateFilter === "period=all" ? "" : `&${activeDateFilter}`}`,
+        orderReadOptions,
       ),
     enabled,
+    refetchInterval: group === "orders" ? orderRefreshInterval : false,
+    refetchIntervalInBackground: false,
     retry: false,
   });
   const summary = useQuery({
     queryKey: ["private", "admin-summary", user?.id, salesFilter],
-    queryFn: () => api<Record<string, number>>(`admin/summary?${salesFilter}`),
+    queryFn: () => api<Record<string, number>>(`admin/summary?${salesFilter}`, orderReadOptions),
+    refetchInterval: orderRefreshInterval,
+    refetchIntervalInBackground: false,
     enabled:
       !!user &&
       hasMfaAccess(user) &&

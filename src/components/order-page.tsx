@@ -1,5 +1,5 @@
 import { SectionLoading } from "./section-loading";
-import { invalidateOrderData } from "@/lib/order-updates";
+import { invalidateOrderData, orderReadOptions, orderRefreshInterval } from "@/lib/order-updates";
 import { PaymentPhotoButton } from "./payment-photo";
 import { OrderReceipt } from "./order-receipt";
 import { OrderTracking } from "./order-tracking";
@@ -47,7 +47,10 @@ export function OrderView({
         admin
           ? `admin/order?id=${id}`
           : `orders/${id}${token ? `?token=${encodeURIComponent(token)}` : ""}`,
+        orderReadOptions,
       ),
+    refetchInterval: orderRefreshInterval,
+    refetchIntervalInBackground: false,
     retry: false,
   });
   useEffect(() => {
@@ -194,7 +197,7 @@ export function OrderView({
                         ? "That payment attempt wasn’t completed. Check your order before trying again."
                         : "We’re still checking your payment. Please don’t pay again.",
                   );
-                  refresh();
+                  refresh(result.status);
                 } catch (error) {
                   notifyError(error);
                 } finally {

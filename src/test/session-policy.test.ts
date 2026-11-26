@@ -144,6 +144,27 @@ afterEach(() => {
 });
 
 describe("session lifetime and remembered MFA", () => {
+  it("does not extend inactivity for background reads, while retaining expiry enforcement", async () => {
+    const { ctx, record, updates } = setup();
+    ctx.request = new Request("https://example.com/api/admin/orders", {
+      headers: { "X-Background-Read": "1" },
+    });
+    const lastSeen = record.last_seen;
+    expect(await identity(ctx)).toMatchObject({ id: userId });
+    expect(record.last_seen).toBe(lastSeen);
+    expect(updates).toHaveLength(0);
+    record.last_seen = at(-24);
+    await expect(identity(ctx)).rejects.toMatchObject({ code: "SESSION_EXPIRED" });
+  });
+  it("continues to record human actions even if a background header is supplied", async () => {
+    const { ctx, record } = setup();
+    ctx.request = new Request("https://example.com/api/admin/actions/test", {
+      method: "POST",
+      headers: { "X-Background-Read": "1" },
+    });
+    await identity(ctx);
+    expect(record.last_seen).toBe(now.toISOString());
+  });
   it("restores owner access for the configured verified account only after MFA", async () => {
     const { ctx, grants } = setup(false, "aal1");
     vi.stubEnv("SUPPORT_USER_ID", userId);

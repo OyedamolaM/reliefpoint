@@ -1,3 +1,4 @@
+import { orderReadOptions, orderRefreshInterval } from "@/lib/order-updates";
 import { SectionLoading } from "./section-loading";
 import { receiptDate, trackingLabel } from "@/lib/receipt";
 import { hasMfaAccess } from "@/lib/session-policy";
@@ -311,8 +312,11 @@ export function AccountPage() {
     queryFn: () =>
       api<{ rows: any[]; more: boolean }>(
         "customer/orders?page=" + page + (tab === "payments" ? "&view=pending" : ""),
+        orderReadOptions,
       ),
     enabled: !!account.user && ["overview", "orders", "payments"].includes(tab),
+    refetchInterval: orderRefreshInterval,
+    refetchIntervalInBackground: false,
     retry: false,
   });
   const addresses = useQuery({
