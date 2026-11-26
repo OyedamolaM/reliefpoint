@@ -7,7 +7,7 @@ alter table public.manual_payments add constraint manual_payments_method_check
  check(method in ('cash','bank_transfer','card','other','mixed'));
 alter table public.manual_payments drop constraint manual_payments_reference_check;
 alter table public.manual_payments add constraint manual_payments_reference_check check(length(reference)<=120);
-drop index public.manual_payment_receipts;
+drop index if exists public.manual_payment_receipts;
 create table public.manual_payment_parts (
  payment_id uuid not null references public.manual_payments,
  position integer not null check(position between 1 and 10),

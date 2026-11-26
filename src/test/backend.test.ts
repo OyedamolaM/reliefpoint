@@ -20,13 +20,21 @@ beforeAll(async () => {
  `);
   await db.exec(`create function auth.jwt() returns jsonb language sql stable as $$select coalesce(nullif(current_setting('request.jwt.claims',true),'')::jsonb,'{}'::jsonb)$$;grant usage on schema auth to authenticated,anon;grant execute on all functions in schema auth to authenticated,anon;
  create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);`);
-  for (const file of readdirSync("supabase/migrations").sort())
+  for (const file of readdirSync("supabase/migrations").sort()) {
+    if (file === "202611260008_split_manual_payments.sql") {
+      // A deployed database may already lack the old receipt index.
+      // Verify that upgrade path, then roll back and test the normal path too.
+      await db.exec("begin; drop index public.manual_payment_receipts;");
+      await db.exec(readFileSync(`supabase/migrations/${file}`, "utf8"));
+      await db.exec("rollback;");
+    }
     await db.exec(
       readFileSync(`supabase/migrations/${file}`, "utf8").replace(
         "create extension if not exists pgcrypto;",
         "-- gen_random_uuid is built into PostgreSQL.",
       ),
     );
+  }
   await db.exec(`insert into auth.users(id,email,email_confirmed_at) values('${customer}','one@example.com',now()),('${other}','two@example.com',now()),('${pharmacist}','pharm@example.com',now()),('${owner}','owner@example.com',now());
  insert into staff_roles values('${pharmacist}','pharmacist'),('${owner}','owner');update settings set checkout_enabled=true;`);
   product = (
