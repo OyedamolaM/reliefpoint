@@ -1,7 +1,11 @@
+import { useDebouncedSearch } from "@/hooks/use-debounced-search";
+import { SearchInput } from "./search-input";
+import { SectionLoading } from "./section-loading";
+import { invalidateOrderData } from "@/lib/order-updates";
+import { receiptDate, trackingLabel } from "@/lib/receipt";
 import { customerWhatsApp, socialProfiles } from "@/lib/contact-links";
 import { CustomerForm as CustomerInvite } from "./customer-form";
 import { CategoryManager } from "./category-manager";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { hasMfaAccess } from "@/lib/session-policy";
 import { uploadFile } from "@/lib/upload";
 import { useState, useEffect, useId, useRef, type FormEvent } from "react";
@@ -213,6 +217,7 @@ export function PhotoUpload({
   );
 }
 export function AdminPage() {
+  const queryClient = useQueryClient();
   const { user, loading } = useAccount();
   const [section, setSection] = useState("overview");
   const [group, setGroup] = useState("overview");
@@ -222,6 +227,11 @@ export function AdminPage() {
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
+  const debouncedSearch = useDebouncedSearch(search);
+  useEffect(() => {
+    setQuery(debouncedSearch);
+    setPage(0);
+  }, [debouncedSearch]);
   const [editing, setEditing] = useState<any>(null);
   const [orderId, setOrderId] = useState("");
   const [listFilter, setListFilter] = useState("period=all");
@@ -286,9 +296,7 @@ export function AdminPage() {
     retry: false,
   });
   const refresh = () => {
-    if (active !== "overview") void data.refetch();
-    if (group === "overview" && user?.roles.some((r) => ["owner", "admin"].includes(r)))
-      void summary.refetch();
+    void invalidateOrderData(queryClient);
   };
   const action = async (name: string, input: unknown) => {
     try {
@@ -315,7 +323,7 @@ export function AdminPage() {
       <SiteShell>
         <div className="mx-auto max-w-xl rounded-2xl border bg-white p-6 sm:p-9">
           {loading ? (
-            <p>Loading staff access…</p>
+            <SectionLoading label="Loading staff access" />
           ) : !user ? (
             <AuthForm />
           ) : !user.roles.length ? (
@@ -352,7 +360,7 @@ export function AdminPage() {
       }
     >
       {loading ? (
-        <p>Loading staff access…</p>
+        <SectionLoading label="Loading staff access" />
       ) : !user ? (
         <AuthForm />
       ) : !user.roles.length ? (
@@ -407,9 +415,7 @@ export function AdminPage() {
           )}
           {group === "overview" && summary.error && <Retry error={summary.error} retry={refresh} />}
           {group === "overview" && summary.isLoading && (
-            <p role="status" className="mb-5 text-sm text-slate-500">
-              Loading pharmacy overview…
-            </p>
+            <SectionLoading label="Loading pharmacy overview" />
           )}
           {group === "overview" && summary.data && (
             <div className="mb-8 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
@@ -523,7 +529,6 @@ export function AdminPage() {
                       setListFilter(filter);
                     }}
                     busy={data.isFetching}
-                    modalOnly
                     title="Filter by date"
                   >
                     <p className="mt-2 text-xs text-slate-500">
@@ -539,12 +544,12 @@ export function AdminPage() {
                   onSubmit={(e) => {
                     e.preventDefault();
                     setPage(0);
-                    setQuery(search);
+                    // Searching is applied after the debounce.
                   }}
                 >
                   {searchable && (
                     <>
-                      <input
+                      <SearchInput
                         aria-label="Search records"
                         className="commerce-input min-w-0 flex-1 basis-40"
                         placeholder={
@@ -553,17 +558,12 @@ export function AdminPage() {
                             : "Search"
                         }
                         value={search}
-                        onChange={(e) => setSearch(e.target.value)}
+                        onValueChange={setSearch}
                       />
-                      <button className="action-button">Search</button>
                     </>
                   )}
-                  <button type="button" className="rounded-lg border px-3" onClick={refresh}>
-                    Refresh
-                  </button>
                 </form>
                 {data.error && <Retry error={data.error} retry={refresh} />}{" "}
-                {data.isLoading && <p>Loading…</p>}
                 {active === "contact_messages" && (
                   <p className="mb-5 text-sm text-slate-500">
                     Messages submitted through your Contact page.
@@ -574,12 +574,20 @@ export function AdminPage() {
                     Awaiting confirmation or payment review. These are not confirmed orders.
                   </p>
                 )}
-                {active === "settings" && data.data?.rows[0] ? (
+                {data.isLoading ? (
+                  <SectionLoading label="Loading records" />
+                ) : active === "settings" && data.data?.rows[0] ? (
                   <SettingsForm value={data.data.rows[0]} onSaved={refresh} />
                 ) : active === "profiles" ? (
                   <CustomerTable rows={data.data?.rows ?? []} />
                 ) : (
-                  <div className="space-y-3">
+                  <div
+                    className={
+                      ["products", "shipping_zones"].includes(active)
+                        ? "grid gap-4 md:grid-cols-2"
+                        : "space-y-3"
+                    }
+                  >
                     {data.data?.rows.map((row, index) => (
                       <article
                         key={row.id ?? `${row.user_id}-${row.role}-${index}`}
@@ -599,6 +607,7 @@ export function AdminPage() {
                                 ? row.name || row.email || "Staff member"
                                 : (row.title ??
                                   row.name ??
+                                  row.public_reference ??
                                   row.reference ??
                                   row.subject ??
                                   row.email ??
@@ -626,7 +635,7 @@ export function AdminPage() {
                             {["products", "shipping_zones", "blog_posts"].includes(active) &&
                               (active !== "blog_posts" || canWriteBlog) && (
                                 <button
-                                  className="underline"
+                                  className="inline-flex min-h-10 items-center rounded-lg border border-brand/20 bg-blue-50 px-4 py-2 text-sm font-semibold text-brand hover:bg-blue-100"
                                   onClick={() =>
                                     void api<{ row: any }>(
                                       `admin/record?resource=${active}&id=${row.id}`,
@@ -640,14 +649,17 @@ export function AdminPage() {
                               )}
                             {row.order_id && (
                               <button
-                                className="underline"
+                                className="inline-flex min-h-10 items-center rounded-lg bg-brand px-4 py-2 font-semibold text-white hover:brightness-110"
                                 onClick={() => setOrderId(row.order_id)}
                               >
                                 View order
                               </button>
                             )}
                             {["orders", "pending_orders"].includes(active) && (
-                              <button className="underline" onClick={() => setOrderId(row.id)}>
+                              <button
+                                className="inline-flex min-h-10 items-center rounded-lg bg-brand px-4 py-2 font-semibold text-white hover:brightness-110"
+                                onClick={() => setOrderId(row.id)}
+                              >
                                 {active === "pending_orders" ? "Review payment" : "View order"}
                               </button>
                             )}
@@ -679,7 +691,8 @@ export function AdminPage() {
                             .filter(
                               (key) =>
                                 row[key] !== undefined &&
-                                !(active === "staff_roles" && key === "phone" && !row[key]),
+                                !(active === "staff_roles" && key === "phone" && !row[key]) &&
+                                !(key === "prescription_status" && row[key] === "not_required"),
                             )
                             .map((key) => (
                               <span
@@ -693,11 +706,18 @@ export function AdminPage() {
                                 }
                               >
                                 <span className="inline-block rounded-full bg-slate-50 px-2.5 py-1 text-xs capitalize">
-                                  {key === "available"
-                                    ? `${row[key]} in stock`
-                                    : active === "staff_roles" && ["role", "phone"].includes(key)
-                                      ? `${key === "role" ? "Role" : "Phone"}: ${String(row[key]).replaceAll("_", " ")}`
-                                      : String(row[key]).replaceAll("_", " ")}
+                                  {key === "created_at"
+                                    ? receiptDate(row[key]) + " WAT"
+                                    : key === "fulfillment_status"
+                                      ? trackingLabel(row[key])
+                                      : key === "prescription_status"
+                                        ? "Prescription: " + String(row[key]).replaceAll("_", " ")
+                                        : key === "available"
+                                          ? `${row[key]} in stock`
+                                          : active === "staff_roles" &&
+                                              ["role", "phone"].includes(key)
+                                            ? `${key === "role" ? "Role" : "Phone"}: ${String(row[key]).replaceAll("_", " ")}`
+                                            : String(row[key]).replaceAll("_", " ")}
                                 </span>
                               </span>
                             ))}
@@ -881,7 +901,22 @@ export function AdminPage() {
                   onClose={() => setOrderId("")}
                   title={active === "pending_orders" ? "Payment details" : "Order details"}
                 >
-                  {orderId && <OrderView id={orderId} admin onUpdate={refresh} />}
+                  {orderId && (
+                    <OrderView
+                      id={orderId}
+                      admin
+                      onUpdate={(status) => {
+                        refresh();
+                        if (status && ["paid", "partially_refunded", "refunded"].includes(status)) {
+                          setSection("orders");
+                          setPage(0);
+                          setSearch("");
+                          setQuery("");
+                          setListFilter("period=all");
+                        }
+                      }}
+                    />
+                  )}
                 </WorkspaceModal>
                 <WorkspaceModal
                   open={!!editing}
@@ -897,7 +932,18 @@ export function AdminPage() {
                 >
                   {editing && ["orders", "pending_orders"].includes(active) ? (
                     <AdminOrderForm
-                      onCreated={refresh}
+                      onCreated={(status) => {
+                        refresh();
+                        setSection(
+                          ["paid", "partially_refunded", "refunded"].includes(status)
+                            ? "orders"
+                            : "pending_orders",
+                        );
+                        setPage(0);
+                        setSearch("");
+                        setQuery("");
+                        setListFilter("period=all");
+                      }}
                       onView={(id, status) => {
                         setEditing(null);
                         setSection(
@@ -1111,6 +1157,7 @@ function AdminEditor({
     },
   });
   const createCategory = async () => {
+    if (categorySaving) return;
     const name = newCategory.trim();
     if (name.length < 2 || name.length > 80) {
       toast.error("Enter a category name between 2 and 80 characters.");
@@ -1204,460 +1251,483 @@ function AdminEditor({
     }
   };
   return (
-    <form
-      className={product ? "grid items-start gap-5 md:grid-cols-2" : "space-y-5"}
-      onSubmit={save}
-    >
-      {(product || blog) && (
-        <>
-          <Field
-            label={blog ? "Title" : "Product name"}
-            name={blog ? "title" : "name"}
-            defaultValue={row.title ?? row.name ?? ""}
-            required
-            onBlur={(e) => {
-              const slug = e.currentTarget.form?.elements.namedItem(
-                "slug",
-              ) as HTMLInputElement | null;
-              if (slug && !slug.value) slug.value = slugify(e.target.value);
-            }}
-          />
-          {blog && (
+    <>
+      <form
+        className={product ? "grid items-start gap-5 md:grid-cols-2" : "space-y-5"}
+        onSubmit={save}
+      >
+        {(product || blog) && (
+          <>
             <Field
-              label="Page name"
-              name="slug"
-              defaultValue={row.slug ?? ""}
+              label={blog ? "Title" : "Product name"}
+              name={blog ? "title" : "name"}
+              defaultValue={row.title ?? row.name ?? ""}
               required
-              pattern="[a-z0-9]+(-[a-z0-9]+)*"
+              onBlur={(e) => {
+                const slug = e.currentTarget.form?.elements.namedItem(
+                  "slug",
+                ) as HTMLInputElement | null;
+                if (slug && !slug.value) slug.value = slugify(e.target.value);
+              }}
             />
-          )}
-          {product ? (
-            <div className="space-y-2">
-              <label className="block text-sm font-semibold">
-                Category
-                <select
-                  aria-label="Category"
-                  name="category"
-                  className="commerce-input mt-2"
-                  value={selectedCategory}
-                  onChange={(event) => setSelectedCategory(event.target.value)}
-                  disabled={categorySaving || categories.isPending || !!categories.error}
-                  required
-                >
-                  <option value="">
-                    {categories.isPending ? "Loading categories…" : "Select category"}
-                  </option>
-                  {[
-                    ...new Set([
-                      ...(categories.data ?? []),
-                      ...(selectedCategory ? [selectedCategory as string] : []),
-                    ]),
-                  ].map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {categories.error && (
-                <Retry error={categories.error} retry={() => void categories.refetch()} />
-              )}
-              <button
-                type="button"
-                className="text-sm font-semibold text-brand underline"
-                disabled={categorySaving}
-                onClick={() => setShowNewCategory(!showNewCategory)}
-              >
-                {showNewCategory ? "Cancel new category" : "+ New category"}
-              </button>
-              {showNewCategory && (
-                <div className="space-y-2 rounded-xl border bg-secondary/40 p-3">
-                  <label className="block text-sm font-semibold">
-                    New category name
-                    <input
-                      className="commerce-input mt-2"
-                      value={newCategory}
-                      maxLength={80}
-                      disabled={categorySaving}
-                      onChange={(event) => setNewCategory(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          if (!categorySaving) void createCategory();
-                        }
-                      }}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="action-button"
-                    disabled={categorySaving}
-                    onClick={() => void createCategory()}
-                  >
-                    {categorySaving ? "Creating..." : "Create category"}
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <Field label="Category" name="category" defaultValue={row.category ?? ""} required />
-          )}
-          <PhotoUpload
-            value={photo}
-            onChange={setPhoto}
-            label={blog ? "Cover photo" : "Product photo"}
-            onUploadingChange={setPhotoUploading}
-          />
-          {blog && (
-            <Field
-              label="Photo description"
-              name={blog ? "cover_alt" : "image_alt"}
-              defaultValue={row.cover_alt ?? row.image_alt ?? ""}
-              required
-              minLength={3}
-            />
-          )}
-        </>
-      )}
-      {product && (
-        <>
-          <Field
-            label="Price (₦)"
-            name="price"
-            type="number"
-            min="1"
-            step="0.01"
-            defaultValue={row.price_kobo ? row.price_kobo / 100 : ""}
-            required
-          />
-          <details className="rounded-xl border border-slate-200 p-4 md:col-span-2">
-            <summary className="cursor-pointer text-sm font-semibold">
-              More details (optional)
-            </summary>
-            <div className="mt-5 grid gap-5 md:grid-cols-2">
-              <div className="grid gap-5 sm:grid-cols-2 md:col-span-2">
-                <div>
-                  <Field
-                    label="Discount price (₦)"
-                    name="discount_price"
-                    type="number"
-                    min="1"
-                    max="1000000"
-                    step="0.01"
-                    aria-invalid={!!priceError}
-                    aria-describedby={priceError ? "discount-price-error" : undefined}
-                    defaultValue={
-                      row.discount_price_kobo == null ? "" : row.discount_price_kobo / 100
-                    }
-                  />
-                  {priceError && (
-                    <p id="discount-price-error" className="mt-2 text-sm text-red-700">
-                      {priceError}
-                    </p>
-                  )}
-                </div>
-                <Field
-                  label="Cost price (₦)"
-                  name="cost_price"
-                  type="number"
-                  min="0"
-                  max="1000000"
-                  step="0.01"
-                  defaultValue={row.cost_price_kobo == null ? "" : row.cost_price_kobo / 100}
-                />
-              </div>
-              <Field label="Brand" name="brand" defaultValue={row.brand ?? ""} maxLength={80} />
+            {blog && (
               <Field
                 label="Page name"
                 name="slug"
                 defaultValue={row.slug ?? ""}
-                placeholder="Created from product name"
+                required
                 pattern="[a-z0-9]+(-[a-z0-9]+)*"
               />
+            )}
+            {product ? (
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold">
+                  Category
+                  <select
+                    aria-label="Category"
+                    name="category"
+                    className="commerce-input mt-2"
+                    value={selectedCategory}
+                    onChange={(event) => setSelectedCategory(event.target.value)}
+                    disabled={categorySaving || categories.isPending || !!categories.error}
+                    required
+                  >
+                    <option value="">
+                      {categories.isPending ? "Loading categories…" : "Select category"}
+                    </option>
+                    {[
+                      ...new Set([
+                        ...(categories.data ?? []),
+                        ...(selectedCategory ? [selectedCategory as string] : []),
+                      ]),
+                    ].map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {categories.error && (
+                  <Retry error={categories.error} retry={() => void categories.refetch()} />
+                )}
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-brand underline"
+                  disabled={categorySaving}
+                  onClick={() => setShowNewCategory(true)}
+                >
+                  + New category
+                </button>
+              </div>
+            ) : (
+              <Field label="Category" name="category" defaultValue={row.category ?? ""} required />
+            )}
+            <PhotoUpload
+              value={photo}
+              onChange={setPhoto}
+              label={blog ? "Cover photo" : "Product photo"}
+              onUploadingChange={setPhotoUploading}
+            />
+            {blog && (
               <Field
                 label="Photo description"
-                name="image_alt"
-                defaultValue={row.image_alt ?? ""}
-                placeholder="Uses product name if left blank"
+                name={blog ? "cover_alt" : "image_alt"}
+                defaultValue={row.cover_alt ?? row.image_alt ?? ""}
+                required
                 minLength={3}
-                maxLength={250}
               />
-              {["detail", "directions", "storage"].map((key) => (
-                <label key={key} className="block text-sm font-semibold capitalize">
-                  {key === "detail"
-                    ? "Description / pack size"
-                    : key === "directions"
-                      ? "Directions"
-                      : "Storage"}
-                  <textarea
-                    className="commerce-input mt-2"
-                    name={key}
-                    defaultValue={row[key] ?? ""}
-                    maxLength={key === "directions" ? 4000 : 2000}
-                  />
-                </label>
-              ))}
-            </div>
-          </details>
-          <div className="flex flex-wrap gap-5 md:col-span-2">
-            {["active", "prescription", "deal"].map((key) => (
-              <label key={key} className="flex items-center gap-2 text-sm capitalize">
-                <input name={key} type="checkbox" defaultChecked={row[key] ?? false} />
-                {key === "active"
-                  ? "Visible in store"
-                  : key === "prescription"
-                    ? "Prescription required"
-                    : "Featured deal"}
-              </label>
-            ))}
-          </div>
-        </>
-      )}
-      {blog && (
-        <>
-          <label className="block text-sm font-semibold">
-            Summary
-            <textarea
-              name="summary"
-              className="commerce-input mt-2"
-              defaultValue={row.summary ?? ""}
-              required
-              minLength={10}
-              maxLength={400}
-            />
-          </label>
-          <Field
-            label="Instagram post or reel (optional)"
-            name="instagram"
-            type="url"
-            defaultValue={row.instagram ?? ""}
-          />
-          <Field
-            label="Pharmacist reviewer ID (optional)"
-            name="reviewer_id"
-            defaultValue={row.reviewer_id ?? ""}
-          />
-          <div className="space-y-4">
-            <h3 className="font-bold">Article</h3>
-            {blocks.map((block, index) => (
-              <div key={index} className="space-y-3 rounded-xl border bg-white p-4">
-                <div className="flex justify-between">
-                  <strong className="capitalize">{block.type}</strong>
-                  <div className="flex gap-3 text-sm">
-                    <button
-                      type="button"
-                      disabled={index === 0}
-                      onClick={() =>
-                        setBlocks((current) => {
-                          const next = [...current];
-                          [next[index - 1], next[index]] = [next[index], next[index - 1]];
-                          return next;
-                        })
-                      }
-                    >
-                      Move up
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBlocks((current) => current.filter((_, i) => i !== index))}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-                {block.type === "image" ? (
-                  <>
-                    <PhotoUpload
-                      value={block.src}
-                      onChange={(value) =>
-                        setBlocks((current) =>
-                          current.map((b, i) => (i === index ? { ...b, src: value } : b)),
-                        )
-                      }
-                    />
-                    <Field
-                      label="Image description"
-                      value={block.alt}
-                      required
-                      onChange={(e) =>
-                        setBlocks((current) =>
-                          current.map((b, i) => (i === index ? { ...b, alt: e.target.value } : b)),
-                        )
-                      }
-                    />
-                  </>
-                ) : (
-                  <textarea
-                    aria-label={`${block.type} ${index + 1}`}
-                    className="commerce-input min-h-28"
-                    value={block.text}
-                    required
-                    onChange={(e) =>
-                      setBlocks((current) =>
-                        current.map((b, i) => (i === index ? { ...b, text: e.target.value } : b)),
-                      )
-                    }
-                  />
-                )}
-              </div>
-            ))}
-            <div className="flex gap-4">
-              {["paragraph", "heading", "image"].map((type) => (
-                <button
-                  className="rounded-lg border px-3 py-2 text-sm"
-                  key={type}
-                  type="button"
-                  onClick={() =>
-                    setBlocks((current) => [
-                      ...current,
-                      type === "image" ? { type, src: "", alt: "" } : { type, text: "" },
-                    ])
-                  }
-                >
-                  Add {type}
-                </button>
-              ))}
-            </div>
-          </div>
-          <label className="block text-sm font-semibold">
-            Publication status
-            <select
-              name="status"
-              className="commerce-input mt-2"
-              defaultValue={row.status ?? "draft"}
-            >
-              <option value="draft">Draft</option>
-              <option value="published">Published</option>
-              <option value="archived">Archived</option>
-            </select>
-          </label>
-        </>
-      )}
-      {resource === "inventory_batches" && (
-        <>
-          <input type="hidden" name="product_id" value={row.product_id} />
-          <Field label="Quantity to add" name="quantity" type="number" min="1" required />
-        </>
-      )}
-      {resource === "shipping_zones" && (
-        <>
-          <label className="block text-sm font-semibold">
-            Fulfillment method
-            <select
-              aria-label="Fulfillment method"
-              className="commerce-input mt-2"
-              value={fulfillmentMethod}
-              onChange={(event) =>
-                setFulfillmentMethod(event.target.value as "delivery" | "pickup")
-              }
-            >
-              <option value="delivery">Delivery</option>
-              <option value="pickup">Pickup</option>
-            </select>
-          </label>
-          {fulfillmentMethod === "delivery" && (
-            <>
-              <label className="block text-sm font-semibold">
-                State / FCT
-                <select
-                  aria-label="State / FCT"
-                  className="commerce-input mt-2"
-                  name="state"
-                  defaultValue={deliveryState(row.state ?? "")}
-                  required
-                >
-                  <option value="">Select state</option>
-                  {nigerianStates.map((state) => (
-                    <option key={state}>{state}</option>
-                  ))}
-                </select>
-              </label>
-              <Field label="LGA / city" name="lga" defaultValue={row.lga ?? ""} required />
-            </>
-          )}
-          <Field
-            label={fulfillmentMethod === "pickup" ? "Pickup location" : "Area"}
-            name="area"
-            defaultValue={row.area ?? ""}
-            required={fulfillmentMethod === "pickup"}
-            maxLength={100}
-          />
-          <Field
-            label={
-              fulfillmentMethod === "pickup"
-                ? "Estimated collection time"
-                : "Estimated Delivery Time"
-            }
-            name="estimate"
-            defaultValue={row.estimate ?? ""}
-            required
-          />
-          {fulfillmentMethod === "delivery" && (
-            <>
+            )}
+          </>
+        )}
+        {product && (
+          <>
+            <div className="space-y-4">
               <Field
-                label="Fee (NGN)"
-                name="fee"
+                label="Price (₦)"
+                name="price"
                 type="number"
-                min="0"
+                min="1"
                 step="0.01"
-                defaultValue={row.fee_kobo ? row.fee_kobo / 100 : 0}
+                defaultValue={row.price_kobo ? row.price_kobo / 100 : ""}
                 required
               />
               <Field
-                label="Free delivery from (NGN, optional)"
-                name="free"
+                label="Cost price (₦)"
+                name="cost_price"
                 type="number"
                 min="0"
+                max="1000000"
                 step="0.01"
-                defaultValue={row.free_over_kobo ? row.free_over_kobo / 100 : ""}
+                defaultValue={row.cost_price_kobo == null ? "" : row.cost_price_kobo / 100}
               />
-            </>
-          )}
-          <label className="flex gap-2">
-            <input name="active" type="checkbox" defaultChecked={row.active ?? true} />
-            Available at checkout
-          </label>
-        </>
-      )}
-      {resource === "staff_roles" && (
-        <>
-          <Field label="Customer account ID" name="user_id" required />
-          <label className="block">
-            Role
-            <select name="role" className="commerce-input mt-2">
-              {roles.map((role) => (
-                <option key={role}>{role}</option>
+            </div>
+            <details className="rounded-xl border border-slate-200 p-4 md:col-span-2">
+              <summary className="cursor-pointer text-sm font-semibold">
+                More details (optional)
+              </summary>
+              <div className="mt-5 grid gap-5 md:grid-cols-2">
+                <div className="grid gap-5 sm:grid-cols-2 md:col-span-2">
+                  <div>
+                    <Field
+                      label="Discount price (₦)"
+                      name="discount_price"
+                      type="number"
+                      min="1"
+                      max="1000000"
+                      step="0.01"
+                      aria-invalid={!!priceError}
+                      aria-describedby={priceError ? "discount-price-error" : undefined}
+                      defaultValue={
+                        row.discount_price_kobo == null ? "" : row.discount_price_kobo / 100
+                      }
+                    />
+                    {priceError && (
+                      <p id="discount-price-error" className="mt-2 text-sm text-red-700">
+                        {priceError}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <Field label="Brand" name="brand" defaultValue={row.brand ?? ""} maxLength={80} />
+                <Field
+                  label="Page name"
+                  name="slug"
+                  defaultValue={row.slug ?? ""}
+                  placeholder="Created from product name"
+                  pattern="[a-z0-9]+(-[a-z0-9]+)*"
+                />
+                <Field
+                  label="Photo description"
+                  name="image_alt"
+                  defaultValue={row.image_alt ?? ""}
+                  placeholder="Uses product name if left blank"
+                  minLength={3}
+                  maxLength={250}
+                />
+                {["detail", "directions", "storage"].map((key) => (
+                  <label key={key} className="block text-sm font-semibold capitalize">
+                    {key === "detail"
+                      ? "Description / pack size"
+                      : key === "directions"
+                        ? "Directions"
+                        : "Storage"}
+                    <textarea
+                      className="commerce-input mt-2"
+                      name={key}
+                      defaultValue={row[key] ?? ""}
+                      maxLength={key === "directions" ? 4000 : 2000}
+                    />
+                  </label>
+                ))}
+              </div>
+            </details>
+            <div className="flex flex-wrap gap-5 md:col-span-2">
+              {["active", "prescription", "deal"].map((key) => (
+                <label key={key} className="flex items-center gap-2 text-sm capitalize">
+                  <input name={key} type="checkbox" defaultChecked={row[key] ?? false} />
+                  {key === "active"
+                    ? "Visible in store"
+                    : key === "prescription"
+                      ? "Prescription required"
+                      : "Featured deal"}
+                </label>
               ))}
-            </select>
-          </label>
-        </>
-      )}
-      <button
-        className="action-button justify-self-start"
-        disabled={
-          busy ||
-          photoUploading ||
-          categorySaving ||
-          (product && (categories.isPending || !!categories.error))
-        }
-      >
-        {busy ? "Saving…" : "Save changes"}
-      </button>
-      {busy && (
-        <div className={product ? "space-y-2 md:col-span-2" : "space-y-2"}>
-          <p role="status" className="text-xs text-slate-500">
-            Saving changes…
-          </p>
-          <div
-            role="progressbar"
-            aria-label="Saving changes"
-            className="h-1.5 overflow-hidden rounded-full bg-blue-100"
-          >
-            <div className="h-full w-2/3 animate-pulse rounded-full bg-brand motion-reduce:animate-none" />
+            </div>
+          </>
+        )}
+        {blog && (
+          <>
+            <label className="block text-sm font-semibold">
+              Summary
+              <textarea
+                name="summary"
+                className="commerce-input mt-2"
+                defaultValue={row.summary ?? ""}
+                required
+                minLength={10}
+                maxLength={400}
+              />
+            </label>
+            <Field
+              label="Instagram post or reel (optional)"
+              name="instagram"
+              type="url"
+              defaultValue={row.instagram ?? ""}
+            />
+            <Field
+              label="Pharmacist reviewer ID (optional)"
+              name="reviewer_id"
+              defaultValue={row.reviewer_id ?? ""}
+            />
+            <div className="space-y-4">
+              <h3 className="font-bold">Article</h3>
+              {blocks.map((block, index) => (
+                <div key={index} className="space-y-3 rounded-xl border bg-white p-4">
+                  <div className="flex justify-between">
+                    <strong className="capitalize">{block.type}</strong>
+                    <div className="flex gap-3 text-sm">
+                      <button
+                        type="button"
+                        disabled={index === 0}
+                        onClick={() =>
+                          setBlocks((current) => {
+                            const next = [...current];
+                            [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                            return next;
+                          })
+                        }
+                      >
+                        Move up
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setBlocks((current) => current.filter((_, i) => i !== index))
+                        }
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                  {block.type === "image" ? (
+                    <>
+                      <PhotoUpload
+                        value={block.src}
+                        onChange={(value) =>
+                          setBlocks((current) =>
+                            current.map((b, i) => (i === index ? { ...b, src: value } : b)),
+                          )
+                        }
+                      />
+                      <Field
+                        label="Image description"
+                        value={block.alt}
+                        required
+                        onChange={(e) =>
+                          setBlocks((current) =>
+                            current.map((b, i) =>
+                              i === index ? { ...b, alt: e.target.value } : b,
+                            ),
+                          )
+                        }
+                      />
+                    </>
+                  ) : (
+                    <textarea
+                      aria-label={`${block.type} ${index + 1}`}
+                      className="commerce-input min-h-28"
+                      value={block.text}
+                      required
+                      onChange={(e) =>
+                        setBlocks((current) =>
+                          current.map((b, i) => (i === index ? { ...b, text: e.target.value } : b)),
+                        )
+                      }
+                    />
+                  )}
+                </div>
+              ))}
+              <div className="flex gap-4">
+                {["paragraph", "heading", "image"].map((type) => (
+                  <button
+                    className="rounded-lg border px-3 py-2 text-sm"
+                    key={type}
+                    type="button"
+                    onClick={() =>
+                      setBlocks((current) => [
+                        ...current,
+                        type === "image" ? { type, src: "", alt: "" } : { type, text: "" },
+                      ])
+                    }
+                  >
+                    Add {type}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <label className="block text-sm font-semibold">
+              Publication status
+              <select
+                name="status"
+                className="commerce-input mt-2"
+                defaultValue={row.status ?? "draft"}
+              >
+                <option value="draft">Draft</option>
+                <option value="published">Published</option>
+                <option value="archived">Archived</option>
+              </select>
+            </label>
+          </>
+        )}
+        {resource === "inventory_batches" && (
+          <>
+            <input type="hidden" name="product_id" value={row.product_id} />
+            <Field label="Quantity to add" name="quantity" type="number" min="1" required />
+          </>
+        )}
+        {resource === "shipping_zones" && (
+          <>
+            <label className="block text-sm font-semibold">
+              Fulfillment method
+              <select
+                aria-label="Fulfillment method"
+                className="commerce-input mt-2"
+                value={fulfillmentMethod}
+                onChange={(event) =>
+                  setFulfillmentMethod(event.target.value as "delivery" | "pickup")
+                }
+              >
+                <option value="delivery">Delivery</option>
+                <option value="pickup">Pickup</option>
+              </select>
+            </label>
+            {fulfillmentMethod === "delivery" && (
+              <>
+                <label className="block text-sm font-semibold">
+                  State / FCT
+                  <select
+                    aria-label="State / FCT"
+                    className="commerce-input mt-2"
+                    name="state"
+                    defaultValue={deliveryState(row.state ?? "")}
+                    required
+                  >
+                    <option value="">Select state</option>
+                    {nigerianStates.map((state) => (
+                      <option key={state}>{state}</option>
+                    ))}
+                  </select>
+                </label>
+                <Field label="LGA / city" name="lga" defaultValue={row.lga ?? ""} required />
+              </>
+            )}
+            <Field
+              label={fulfillmentMethod === "pickup" ? "Pickup location" : "Area"}
+              name="area"
+              defaultValue={row.area ?? ""}
+              required={fulfillmentMethod === "pickup"}
+              maxLength={100}
+            />
+            <Field
+              label={
+                fulfillmentMethod === "pickup"
+                  ? "Estimated collection time"
+                  : "Estimated Delivery Time"
+              }
+              name="estimate"
+              defaultValue={row.estimate ?? ""}
+              required
+            />
+            {fulfillmentMethod === "delivery" && (
+              <>
+                <Field
+                  label="Fee (NGN)"
+                  name="fee"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  defaultValue={row.fee_kobo ? row.fee_kobo / 100 : 0}
+                  required
+                />
+                <Field
+                  label="Free delivery from (NGN, optional)"
+                  name="free"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  defaultValue={row.free_over_kobo ? row.free_over_kobo / 100 : ""}
+                />
+              </>
+            )}
+            <label className="flex gap-2">
+              <input name="active" type="checkbox" defaultChecked={row.active ?? true} />
+              Available at checkout
+            </label>
+          </>
+        )}
+        {resource === "staff_roles" && (
+          <>
+            <Field label="Customer account ID" name="user_id" required />
+            <label className="block">
+              Role
+              <select name="role" className="commerce-input mt-2">
+                {roles.map((role) => (
+                  <option key={role}>{role}</option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
+        <button
+          className="action-button justify-self-start"
+          disabled={
+            busy ||
+            photoUploading ||
+            categorySaving ||
+            (product && (categories.isPending || !!categories.error))
+          }
+        >
+          {busy ? "Saving…" : "Save changes"}
+        </button>
+        {busy && (
+          <div className={product ? "space-y-2 md:col-span-2" : "space-y-2"}>
+            <p role="status" className="text-xs text-slate-500">
+              Saving changes…
+            </p>
+            <div
+              role="progressbar"
+              aria-label="Saving changes"
+              className="h-1.5 overflow-hidden rounded-full bg-blue-100"
+            >
+              <div className="h-full w-2/3 animate-pulse rounded-full bg-brand motion-reduce:animate-none" />
+            </div>
           </div>
-        </div>
+        )}
+      </form>
+      {product && (
+        <WorkspaceModal
+          open={showNewCategory}
+          onClose={() => {
+            if (!categorySaving) setShowNewCategory(false);
+          }}
+          title="Create category"
+          size="compact"
+        >
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void createCategory();
+            }}
+          >
+            <Field
+              label="New category name"
+              value={newCategory}
+              onChange={(event) => setNewCategory(event.target.value)}
+              required
+              minLength={2}
+              maxLength={80}
+              disabled={categorySaving}
+              autoFocus
+            />
+            <div className="flex flex-wrap gap-3">
+              <button type="submit" className="action-button" disabled={categorySaving}>
+                {categorySaving ? "Creating..." : "Create category"}
+              </button>
+              <button
+                type="button"
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold hover:bg-secondary"
+                disabled={categorySaving}
+                onClick={() => setShowNewCategory(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </WorkspaceModal>
       )}
-    </form>
+    </>
   );
 }
 function CustomerTable({ rows }: { rows: any[] }) {
@@ -1859,11 +1929,7 @@ function SettingsForm({ value, onSaved }: { value: any; onSaved: () => void }) {
             Recheck
           </button>
         </div>
-        {readiness.isPending && (
-          <p role="status" className="mt-3 text-sm">
-            Checking checkout…
-          </p>
-        )}
+        {readiness.isPending && <SectionLoading label="Checking checkout" compact />}
         {readiness.error && (
           <Retry error={readiness.error} retry={() => void readiness.refetch()} />
         )}
@@ -2003,17 +2069,14 @@ function SalesDateFilter({
   onApply,
   busy,
   children,
-  modalOnly = false,
   title = "Filter sales by date",
 }: {
   filter: string;
   onApply: (filter: string) => void;
   busy: boolean;
   children?: import("react").ReactNode;
-  modalOnly?: boolean;
   title?: string;
 }) {
-  const mobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const applied = new URLSearchParams(filter);
   const [period, setPeriod] = useState(applied.get("period") || "month");
@@ -2034,8 +2097,14 @@ function SalesDateFilter({
         }
       }}
     >
-      <div className="grid gap-4 sm:flex sm:flex-wrap sm:items-end sm:gap-3">
-        <label className="min-w-36 text-sm font-semibold">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label
+          className={
+            period === "custom" || period === "all"
+              ? "text-sm font-semibold sm:col-span-2"
+              : "text-sm font-semibold"
+          }
+        >
           Sales period
           <select
             aria-label="Sales period"
@@ -2094,7 +2163,7 @@ function SalesDateFilter({
             />
           </>
         )}
-        <button className="action-button" disabled={busy}>
+        <button className="action-button sm:col-span-2" disabled={busy}>
           Apply
         </button>
       </div>
@@ -2105,7 +2174,7 @@ function SalesDateFilter({
       aria-label="Sales date filter"
       className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"
     >
-      {mobile || modalOnly ? (
+      {
         <>
           <button
             type="button"
@@ -2118,13 +2187,11 @@ function SalesDateFilter({
           >
             <CalendarDays size={18} aria-hidden="true" /> Date filter
           </button>
-          <WorkspaceModal open={open} onClose={() => setOpen(false)} title={title}>
+          <WorkspaceModal open={open} onClose={() => setOpen(false)} title={title} size="compact">
             {form}
           </WorkspaceModal>
         </>
-      ) : (
-        form
-      )}
+      }
       {children}
     </section>
   );

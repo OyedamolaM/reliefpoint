@@ -16,6 +16,7 @@ const state = vi.hoisted(() => ({
   calls: [] as string[],
   actions: [] as { path: string; input: unknown }[],
   showSettings: false,
+  createdOrder: null as any,
   categoryNames: ["Vitamins", "Skincare"],
   factors: [{ id: "factor-1", name: "ReliefPoint" }] as { id: string; name: string }[],
 }));
@@ -51,7 +52,15 @@ vi.mock("@/lib/api", () => ({
           eta: "Next day",
         },
       };
-    if (path === "admin/order-create")
+    if (path === "admin/order-create") {
+      state.createdOrder = {
+        id: "00000000-0000-4000-8000-000000000020",
+        reference: "RP-example",
+        payment_status: "pending",
+        fulfillment_status: "awaiting_payment",
+        total: 450000,
+        created_at: "2026-11-26T09:00:00Z",
+      };
       return {
         order: {
           id: "00000000-0000-4000-8000-000000000020",
@@ -62,7 +71,14 @@ vi.mock("@/lib/api", () => ({
         url: "https://pharmacy.example/orders/example?token=private",
         expires_at: "2026-11-26T14:00:00Z",
       };
-    if (path === "admin/manual-payment") return { status: "paid", message: "Payment recorded." };
+    }
+    if (path === "admin/manual-payment") {
+      if (state.createdOrder) {
+        state.createdOrder.payment_status = "paid";
+        state.createdOrder.fulfillment_status = "processing";
+      }
+      return { status: "paid", message: "Payment recorded." };
+    }
     return path === "auth/mfa-factors"
       ? { factors: state.factors }
       : path === "admin/customer-invite" || path === "admin/staff-invite"
@@ -141,6 +157,16 @@ vi.mock("@/lib/api", () => ({
         more: page + 1 < state.categoryNames.length,
       };
     }
+    if (path.startsWith("admin/orders?")) {
+      const pending = path.includes("view=pending");
+      return {
+        rows:
+          state.createdOrder && (state.createdOrder.payment_status === "pending") === pending
+            ? [{ ...state.createdOrder }]
+            : [],
+        more: false,
+      };
+    }
     if (path.startsWith("admin/summary"))
       return { paid_kobo: 240000, confirmed_orders: 1, pending_payments: 1, prescription_queue: 0 };
     if (path === "admin/checkout-readiness")
@@ -184,6 +210,7 @@ beforeEach(() => {
   state.calls = [];
   state.actions = [];
   state.showSettings = false;
+  state.createdOrder = null;
   state.categoryNames = ["Vitamins", "Skincare"];
   state.user.aal = "aal2";
   state.user.mfaVerified = true;
@@ -217,10 +244,12 @@ describe("pharmacy workspaces", () => {
       target: { value: "New care product" },
     });
     fireEvent.click(dialog.getByRole("button", { name: "+ New category" }));
-    fireEvent.change(dialog.getByLabelText("New category name"), {
+    const categoryModal = screen.getByRole("dialog", { name: "Create category" });
+    expect(categoryModal).toHaveClass("max-w-lg");
+    fireEvent.change(within(categoryModal).getByLabelText("New category name"), {
       target: { value: "Everyday care" },
     });
-    fireEvent.click(dialog.getByRole("button", { name: "Create category" }));
+    fireEvent.click(within(categoryModal).getByRole("button", { name: "Create category" }));
     await waitFor(() =>
       expect(dialog.getByRole("combobox", { name: "Category" })).toHaveValue("Everyday care"),
     );
@@ -277,21 +306,21 @@ describe("pharmacy workspaces", () => {
       items: [{ id: "00000000-0000-4000-8000-000000000011", quantity: 1 }],
     });
     expect(within(modal).getByText("Record payment")).toBeVisible();
-    fireEvent.change(within(modal).getByLabelText("Receipt / transfer reference"), {
-      target: { value: "CASH-001" },
-    });
+    expect(within(modal).queryByLabelText(/Receipt \/ transfer reference/)).not.toBeInTheDocument();
     fireEvent.click(
       within(modal).getByRole("checkbox", { name: "I have confirmed receipt of this payment." }),
     );
     fireEvent.click(within(modal).getByRole("button", { name: "Confirm payment received" }));
     await waitFor(() =>
       expect(state.actions.find((a) => a.path === "admin/manual-payment")?.input).toMatchObject({
-        method: "cash",
-        amount: 450000,
-        reference: "CASH-001",
+        payments: [{ method: "cash", amount: 450000, reference: "" }],
       }),
     );
     expect(await within(modal).findByText(/Payment confirmed/)).toBeVisible();
+    fireEvent.click(within(modal).getByRole("button", { name: "Close" }));
+    expect(await screen.findByText("RP-example")).toBeVisible();
+    expect(screen.getByRole("button", { name: "View order" })).toHaveClass("bg-brand");
+    expect(screen.queryByRole("button", { name: "Refresh" })).not.toBeInTheDocument();
   });
   it("lets an administrator invite staff by email without an account ID or owner escalation", async () => {
     render(<AdminPage />);
@@ -350,7 +379,12 @@ describe("pharmacy workspaces", () => {
     expect(modal).toHaveClass("max-w-xl");
     expect(within(modal).getByLabelText("Category name")).toHaveValue("Vitamins");
     expect(within(modal).getByText("Products in this category")).toBeInTheDocument();
-    expect(within(modal).getByLabelText("Find products")).toBeInTheDocument();
+    fireEvent.click(within(modal).getByRole("button", { name: "Add products to category" }));
+    expect(
+      within(screen.getByRole("dialog", { name: "Add products to category" })).getByLabelText(
+        "Find products",
+      ),
+    ).toBeInTheDocument();
   });
   it("keeps the chosen date filter across order tabs and submits customer or item search", async () => {
     render(<AdminPage />);
@@ -367,11 +401,13 @@ describe("pharmacy workspaces", () => {
     await waitFor(() => expect(within(modal).getByRole("button", { name: "Apply" })).toBeEnabled());
     fireEvent.click(within(modal).getByRole("button", { name: "Apply" }));
     fireEvent.change(screen.getByLabelText("Search records"), { target: { value: "Vitamin C" } });
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
-    await waitFor(() =>
-      expect(state.calls).toContain(
-        "admin/orders?page=0&q=Vitamin%20C&period=custom&from=2026-10-01&to=2026-10-31",
-      ),
+
+    await waitFor(
+      () =>
+        expect(state.calls).toContain(
+          "admin/orders?page=0&q=Vitamin%20C&period=custom&from=2026-10-01&to=2026-10-31",
+        ),
+      { timeout: 3500 },
     );
     fireEvent.click(screen.getByRole("button", { name: "Pending payments" }));
     await waitFor(() =>
@@ -416,7 +452,7 @@ describe("pharmacy workspaces", () => {
     fireEvent.change(within(modal).getByLabelText("Email address"), {
       target: { value: "new@example.com" },
     });
-    fireEvent.change(within(modal).getByLabelText("Nigerian phone number"), {
+    fireEvent.change(within(modal).getByLabelText("Phone number"), {
       target: { value: "08012345678" },
     });
     expect(within(modal).queryByLabelText(/password/i)).not.toBeInTheDocument();
@@ -611,6 +647,8 @@ describe("pharmacy workspaces", () => {
   it("applies a custom sales period without fetching incomplete dates", async () => {
     render(<AdminPage />);
     await screen.findByText("Confirmed sales");
+    fireEvent.click(screen.getByRole("button", { name: "Date filter" }));
+    expect(screen.getByRole("dialog", { name: "Filter sales by date" })).toHaveClass("max-w-lg");
     fireEvent.change(screen.getByLabelText("Sales period"), { target: { value: "custom" } });
     fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-10-01" } });
     fireEvent.change(screen.getByLabelText("To"), { target: { value: "2026-10-31" } });

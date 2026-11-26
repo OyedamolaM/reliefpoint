@@ -1,3 +1,5 @@
+import { SearchInput } from "./search-input";
+import { SectionLoading } from "./section-loading";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -14,10 +16,13 @@ function usePickerSearch() {
     [page, setPage] = useState(0);
   useEffect(() => {
     if (search.trim() === query) return;
-    const timer = setTimeout(() => {
-      setQuery(search.trim());
-      setPage(0);
-    }, 300);
+    const timer = setTimeout(
+      () => {
+        setQuery(search.trim());
+        setPage(0);
+      },
+      search.trim() ? 2000 : 0,
+    );
     return () => clearTimeout(timer);
   }, [search, query]);
   return { search, setSearch, query, page, setPage };
@@ -43,14 +48,14 @@ export function OrderCustomerPicker({
   });
   return (
     <WorkspaceModal open={open} onClose={onClose} title="Select customer" size="medium">
-      <Field
-        label="Search customers"
-        type="search"
+      <SearchInput
+        aria-label="Search customers"
+        placeholder="Search customers"
         value={search}
-        onChange={(event) => setSearch(event.target.value)}
+        onValueChange={setSearch}
       />
       {customers.error && <Retry error={customers.error} retry={() => void customers.refetch()} />}
-      {customers.isPending && <p>Loading customers…</p>}
+      {customers.isPending && <SectionLoading label="Loading customers" compact />}
       <ul className="max-h-80 divide-y overflow-y-auto">
         {customers.data?.rows.map((customer) => (
           <li key={customer.id}>
@@ -108,14 +113,14 @@ export function OrderProductPicker({
   });
   return (
     <WorkspaceModal open={open} onClose={onClose} title="Select products" size="medium">
-      <Field
-        label="Search products"
-        type="search"
+      <SearchInput
+        aria-label="Search products"
+        placeholder="Search products"
         value={search}
-        onChange={(event) => setSearch(event.target.value)}
+        onValueChange={setSearch}
       />
       {catalog.error && <Retry error={catalog.error} retry={() => void catalog.refetch()} />}
-      {catalog.isPending && <p>Loading products…</p>}
+      {catalog.isPending && <SectionLoading label="Loading products" compact />}
       <ul className="max-h-80 divide-y overflow-y-auto">
         {catalog.data?.configured &&
           catalog.data.products.map((product) => {

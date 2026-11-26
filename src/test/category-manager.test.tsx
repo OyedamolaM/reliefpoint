@@ -49,9 +49,11 @@ afterEach(cleanup);
 it("assigns selected products across pages while creating a category", async () => {
   render(<Category />);
   fireEvent.change(screen.getByLabelText("Category name"), { target: { value: "Everyday care" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add products to category" }));
   fireEvent.click(await screen.findByLabelText("Add Vitamin C to category"));
   fireEvent.click(screen.getByRole("button", { name: "Next" }));
   fireEvent.click(await screen.findByLabelText("Add Care cream to category"));
+  fireEvent.click(screen.getByRole("button", { name: /Add selected products/ }));
   await waitFor(() =>
     expect(screen.getByRole("button", { name: "Create category" })).toBeEnabled(),
   );
@@ -75,10 +77,11 @@ it("adds products after creating an empty category and preserves selection when 
   await screen.findByText("No products assigned yet.");
   fireEvent.click(screen.getByRole("button", { name: "Add products to category" }));
   fireEvent.click(await screen.findByLabelText("Add Vitamin C to category"));
+  fireEvent.click(screen.getByRole("button", { name: /Add selected products/ }));
   state.fail = true;
   fireEvent.click(screen.getByRole("button", { name: "Save category" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Save category" })).toBeEnabled());
-  expect(screen.getByLabelText("Add Vitamin C to category")).toBeChecked();
+  expect(screen.getByRole("button", { name: "Unselect Vitamin C" })).toBeVisible();
   expect(screen.getByLabelText("Category name")).toHaveValue("Everyday care");
   state.fail = false;
   fireEvent.click(screen.getByRole("button", { name: "Save category" }));
