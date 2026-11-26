@@ -83,7 +83,7 @@ describe("completed checkout navigation", () => {
     for (const [label, value] of [
       ["Full name", "Amina Test"],
       ["Email", "amina@example.com"],
-      ["Nigerian phone number", "08012345678"],
+      ["Phone number", "08012345678"],
       ["Street address", "12 Oregun Road"],
     ])
       fireEvent.change(screen.getByLabelText(label!), { target: { value } });

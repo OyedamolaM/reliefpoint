@@ -25,7 +25,7 @@ function Harness() {
 function deliveryDetails() {
   fireEvent.change(screen.getByLabelText("Full name"), { target: { value: "Test Customer" } });
   fireEvent.change(screen.getByLabelText("Email"), { target: { value: "customer@example.com" } });
-  fireEvent.change(screen.getByLabelText("Nigerian phone number"), {
+  fireEvent.change(screen.getByLabelText("Phone number"), {
     target: { value: "08012345678" },
   });
   fireEvent.change(screen.getByLabelText("Street address"), { target: { value: "1 Test Street" } });

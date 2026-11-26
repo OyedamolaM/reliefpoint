@@ -47,7 +47,7 @@ export function CustomerForm({ onSaved }: { onSaved: (customer?: CustomerChoice)
       <Field label="Full name" name="name" required minLength={2} maxLength={100} />
       <Field label="Email address" name="email" type="email" required maxLength={180} />
       <Field
-        label="Nigerian phone number"
+        label="Phone number"
         name="phone"
         type="tel"
         required

@@ -684,7 +684,7 @@ export function CommerceProvider({
                     {
                       name: "Full name",
                       email: "Email",
-                      phone: "Nigerian phone number",
+                      phone: "Phone number",
                       address: "Street address",
                     }[field]
                   }

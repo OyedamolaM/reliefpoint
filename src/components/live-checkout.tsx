@@ -1,3 +1,4 @@
+import { SectionLoading } from "./section-loading";
 import { uploadFile } from "@/lib/upload";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -50,6 +51,7 @@ export function LiveCheckout({
   const [order, setOrder] = useState<{
     id: string;
     reference: string;
+    public_reference?: string;
     needs_prescription: boolean;
   } | null>(null);
   const [error, setError] = useState("");
@@ -164,7 +166,7 @@ export function LiveCheckout({
       )}
       {order && (
         <p className="rounded-lg bg-secondary p-3 text-sm">
-          Checkout {order.reference}{" "}
+          Checkout {order.public_reference ?? order.reference}{" "}
           <Link to="/orders/$id" params={{ id: order.id }} className="underline">
             View status
           </Link>
@@ -247,7 +249,7 @@ export function LiveCheckout({
                     {
                       name: "Full name",
                       email: "Email",
-                      phone: "Nigerian phone number",
+                      phone: "Phone number",
                       address: "Street address",
                     }[key]
                   }
@@ -350,11 +352,7 @@ export function LiveCheckout({
                 )}
               </label>
             )}
-            {zones.isPending && (
-              <p role="status" className="text-sm">
-                Loading delivery areas…
-              </p>
-            )}
+            {zones.isPending && <SectionLoading label="Loading delivery areas" compact />}
             {zones.isError && (
               <div role="alert" className="rounded-xl border border-red-200 p-3 text-sm">
                 <p>We couldn’t load delivery areas. Your details are still here.</p>

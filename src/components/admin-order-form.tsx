@@ -13,7 +13,7 @@ import { WorkspaceModal } from "./workspace-shell";
 import { Button } from "./ui/button";
 
 type Created = {
-  order: { id: string; reference: string; payment_status: string };
+  order: { id: string; reference: string; public_reference?: string; payment_status: string };
   url: string;
   total: number;
   expires_at: string;
@@ -22,7 +22,7 @@ export function AdminOrderForm({
   onCreated,
   onView,
 }: {
-  onCreated: () => void;
+  onCreated: (status: string) => void;
   onView: (id: string, status: string) => void;
 }) {
   const requestId = useRef(crypto.randomUUID());
@@ -82,7 +82,7 @@ export function AdminOrderForm({
       } else {
         const result = await send<Created>("admin/order-create", parsed.data);
         setCreated(result);
-        onCreated();
+        onCreated(result.order.payment_status);
         toast.success("Saved under Pending payments.");
       }
     } catch (error) {
@@ -94,7 +94,9 @@ export function AdminOrderForm({
   if (created)
     return (
       <div className="space-y-4">
-        <p className="break-all font-semibold">{created.order.reference}</p>
+        <p className="break-all font-semibold">
+          {created.order.public_reference ?? created.order.reference}
+        </p>
         <p>
           {created.order.payment_status === "pending"
             ? "Awaiting payment"
@@ -109,7 +111,7 @@ export function AdminOrderForm({
             total={created.total}
             onSaved={(status) => {
               setCreated({ ...created, order: { ...created.order, payment_status: status } });
-              onCreated();
+              onCreated(status);
             }}
           />
         )}

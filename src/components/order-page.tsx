@@ -1,10 +1,13 @@
+import { SectionLoading } from "./section-loading";
+import { invalidateOrderData } from "@/lib/order-updates";
+import { PaymentPhotoButton } from "./payment-photo";
 import { OrderReceipt } from "./order-receipt";
 import { OrderTracking } from "./order-tracking";
 import { TrackingEditor, InternalNoteForm } from "./order-tracking-editor";
-import { receiptDate } from "@/lib/receipt";
+import { receiptDate, paymentMethodLabel, trackingLabel } from "@/lib/receipt";
 import { uploadFile } from "@/lib/upload";
 import { useEffect, useState, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, send, notifyError } from "@/lib/api";
 import { formatNaira, type Product } from "@/lib/commerce";
@@ -30,8 +33,9 @@ export function OrderView({
   id: string;
   token?: string;
   admin?: boolean;
-  onUpdate?: () => void;
+  onUpdate?: (status?: string) => void;
 }) {
+  const queryClient = useQueryClient();
   const account = useAccount();
   const shop = useCommerce();
   const [busy, setBusy] = useState(false);
@@ -60,7 +64,7 @@ export function OrderView({
         )}
       </div>
     );
-  if (!data.data) return <p>Loading your order…</p>;
+  if (!data.data) return <SectionLoading label="Loading your order" />;
   const { order, items, events, prescriptions, refunds, payment, can_resume } = data.data;
   const ownedSend = <T,>(path: string, body: unknown) =>
     api<T>(path, {
@@ -73,9 +77,9 @@ export function OrderView({
   const fulfillment = account.user?.roles.some((r) =>
     ["owner", "admin", "fulfillment"].includes(r),
   );
-  const refresh = () => {
-    void data.refetch();
-    onUpdate?.();
+  const refresh = (status?: string) => {
+    if (onUpdate) onUpdate(status);
+    else void invalidateOrderData(queryClient);
   };
   const action = async (name: string, input: unknown) => {
     setBusy(true);
@@ -96,36 +100,58 @@ export function OrderView({
       <div>
         <h1 className="break-all text-2xl font-bold">
           {["pending", "review"].includes(order.payment_status) ? "Payment" : "Order"}{" "}
-          {order.reference}
+          {order.public_reference ?? order.reference}
         </h1>
-        <p className="mt-2 text-sm">{new Date(order.created_at).toLocaleString("en-NG")}</p>
+        <p className="mt-2 text-sm">{receiptDate(order.created_at)} WAT</p>
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
         {[
           ["Payment", order.payment_status],
           ["Delivery", order.fulfillment_status],
           ["Prescription", order.prescription_status],
-        ].map(([label, value]) => (
-          <div key={label} className="rounded-xl bg-secondary p-4">
-            <strong>{label}</strong>
-            <p className="mt-2 capitalize">{String(value).replaceAll("_", " ")}</p>
-          </div>
-        ))}
+        ]
+          .filter(([label, value]) => label !== "Prescription" || value !== "not_required")
+          .map(([label, value]) => (
+            <div key={label} className="rounded-xl bg-secondary p-4">
+              <strong>{label}</strong>
+              <p className="mt-2 capitalize">
+                {label === "Delivery"
+                  ? trackingLabel(String(value))
+                  : String(value).replaceAll("_", " ")}
+              </p>
+            </div>
+          ))}
       </div>
       {order.payment_method && order.payment_method !== "paystack" && (
         <div className="rounded-xl border p-4">
           <p className="font-semibold">
             {order.payment_method === "manual_pending"
               ? "Awaiting payment to the pharmacy"
-              : order.payment_method === "cash"
-                ? "Payment recorded · Cash"
-                : "Payment recorded · Bank transfer"}
+              : `Payment recorded · ${paymentMethodLabel(order.payment_method)}`}
           </p>
-          {admin && data.data.manual_payment && (
-            <p className="mt-2 text-sm">
-              Receipt / transfer reference: {data.data.manual_payment.reference}
-            </p>
+          {admin && data.data.manual_payment?.parts?.length > 0 && (
+            <ul className="mt-2 space-y-1 text-sm">
+              {[...data.data.manual_payment.parts]
+                .sort((a: any, b: any) => a.position - b.position)
+                .map((part: any, index: number) => (
+                  <li key={index}>
+                    {paymentMethodLabel(part.method)}: {formatNaira(part.amount / 100)}
+                    {part.evidence_id && manage && <PaymentPhotoButton id={part.evidence_id} />}
+                    {part.method !== "cash" && part.reference
+                      ? ` · Reference: ${part.reference}`
+                      : ""}
+                  </li>
+                ))}
+            </ul>
           )}
+          {admin &&
+            !data.data.manual_payment?.parts?.length &&
+            data.data.manual_payment?.method !== "cash" &&
+            data.data.manual_payment?.reference && (
+              <p className="mt-2 text-sm">
+                Receipt / transfer reference: {data.data.manual_payment.reference}
+              </p>
+            )}
           {admin &&
             manage &&
             order.payment_status === "pending" &&

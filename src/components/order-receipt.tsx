@@ -132,6 +132,15 @@ export function OrderReceipt({
               <br />
               Payment method: {paymentMethodLabel(receipt.method)}
             </p>
+            {receipt.payments && receipt.payments.length > 1 && (
+              <ul className="space-y-1 text-sm">
+                {receipt.payments.map((part, index) => (
+                  <li key={index}>
+                    {paymentMethodLabel(part.method)}: {formatNaira(part.amount / 100)}
+                  </li>
+                ))}
+              </ul>
+            )}
             <p className="break-words">
               <strong>Billed to</strong>
               <br />

@@ -71,7 +71,7 @@ describe("server-backed checkout", () => {
     for (const [label, value] of [
       ["Full name", "Amina Test"],
       ["Email", "amina@example.com"],
-      ["Nigerian phone number", "08012345678"],
+      ["Phone number", "08012345678"],
     ])
       fireEvent.change(screen.getByLabelText(label!), { target: { value } });
     fireEvent.submit(screen.getByRole("button", { name: "Continue to payment" }).closest("form")!);
@@ -239,7 +239,7 @@ describe("server-backed checkout", () => {
     render(<LiveCheckout cart={[{ product, quantity: 1 }]} onBack={() => {}} />);
     fireEvent.change(screen.getByLabelText("Full name"), { target: { value: "Amina Test" } });
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "amina@example.com" } });
-    fireEvent.change(screen.getByLabelText("Nigerian phone number"), {
+    fireEvent.change(screen.getByLabelText("Phone number"), {
       target: { value: "08012345678" },
     });
     fireEvent.change(screen.getByLabelText("Street address"), {

@@ -1,3 +1,5 @@
+import { SectionLoading } from "./section-loading";
+import { receiptDate, trackingLabel } from "@/lib/receipt";
 import { hasMfaAccess } from "@/lib/session-policy";
 import { useState, useId, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -119,7 +121,7 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: "signin" | 
         {mode === "signup" && (
           <Field
             name="phone"
-            label="Nigerian phone number"
+            label="Phone number"
             type="tel"
             autoComplete="tel"
             required
@@ -323,7 +325,7 @@ export function AccountPage() {
     return (
       <SiteShell>
         <div className="mx-auto max-w-lg rounded-2xl border bg-white p-6 sm:p-9">
-          {account.loading ? <p>Loading your account?</p> : <AuthForm />}
+          {account.loading ? <SectionLoading label="Loading your account" /> : <AuthForm />}
         </div>
       </SiteShell>
     );
@@ -440,11 +442,7 @@ export function AccountPage() {
             )}
           </div>
           {orders.error && <Retry error={orders.error} retry={() => void orders.refetch()} />}
-          {orders.isLoading && (
-            <p role="status" className="py-8 text-center text-sm text-slate-500">
-              Loading purchases?
-            </p>
-          )}
+          {orders.isLoading && <SectionLoading label="Loading purchases" />}
           <div className="space-y-3">
             {orders.data?.rows.slice(0, tab === "overview" ? 4 : 24).map((o) => (
               <Link
@@ -457,18 +455,17 @@ export function AccountPage() {
                   <ShoppingBag size={21} />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="break-all text-sm font-semibold">{o.reference}</p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {new Date(o.created_at).toLocaleDateString("en-NG")}
+                  <p className="break-all text-sm font-semibold">
+                    {o.public_reference ?? o.reference}
                   </p>
+                  <p className="mt-1 text-xs text-slate-500">{receiptDate(o.created_at)} WAT</p>
                 </div>
                 <div className="text-right">
                   <strong className="text-sm">{formatNaira(o.total / 100)}</strong>
                   <p className="mt-2 text-xs capitalize text-slate-500">
-                    {(tab === "payments" ? o.payment_status : o.fulfillment_status).replaceAll(
-                      "_",
-                      " ",
-                    )}
+                    {tab === "payments"
+                      ? o.payment_status.replaceAll("_", " ")
+                      : trackingLabel(o.fulfillment_status)}
                   </p>
                 </div>
                 <ArrowUpRight size={17} className="text-slate-400" />
@@ -536,6 +533,7 @@ export function AccountPage() {
               Add address
             </button>
           </div>
+          {addresses.isLoading && <SectionLoading label="Loading addresses" />}
           {addresses.error && (
             <Retry error={addresses.error} retry={() => void addresses.refetch()} />
           )}
@@ -738,11 +736,7 @@ export function AuthenticatorPanel() {
               ? "Set up your authenticator"
               : "Enter your verification code"}
           </h2>
-          {factors.isLoading && (
-            <p role="status" className="text-sm text-slate-500">
-              Checking your authenticator…
-            </p>
-          )}
+          {factors.isLoading && <SectionLoading label="Checking your authenticator" compact />}
           {factors.error && <Retry error={factors.error} retry={() => void factors.refetch()} />}
           {!enrollment && !!factors.data?.factors.length && (
             <p className="text-sm leading-6 text-slate-500">
