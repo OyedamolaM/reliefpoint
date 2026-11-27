@@ -137,7 +137,8 @@ it("shows the original receipt with print and download controls, without renderi
   render(<OrderReceipt id="order-1" document={receipt} />);
   fireEvent.click(screen.getByRole("button", { name: "View receipt" }));
   const dialog = within(screen.getByRole("dialog"));
-  expect(dialog.getByText(/Payment method: Cash/)).toBeInTheDocument();
+  expect(dialog.getByRole("heading", { name: "Payment method" })).toBeInTheDocument();
+  expect(dialog.getByText("Cash", { exact: true })).toBeInTheDocument();
   expect(dialog.getByText("Vitamin C")).toBeInTheDocument();
   expect(dialog.getByRole("button", { name: "Print / Save as PDF" })).toBeInTheDocument();
   expect(dialog.getByRole("button", { name: "Download PDF" })).toBeInTheDocument();
